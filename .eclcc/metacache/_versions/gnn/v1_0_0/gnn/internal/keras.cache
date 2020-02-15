@@ -1,0 +1,10 @@
+<Cache hash="-6229868875486127407">
+<Attr module="_versions.GNN.V1_0_0.GNN.Internal" name="keras">
+ <Depend module="" name="gnn"/>
+ <Depend module="_versions.GNN.V1_0_0.GNN" name="types"/>
+ <Depend module="_versions.GNN.V1_0_0.GNN.Internal" name="types"/>
+ <Depend module="_versions.GNN.V1_0_0.GNN" name="tensor"/>
+ <Depend module="std.system" name="thorlib"/>
+ <Depend name="python3"/>
+</Attr>
+</Cache>

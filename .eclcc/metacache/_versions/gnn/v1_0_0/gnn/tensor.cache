@@ -1,0 +1,9 @@
+<Cache hash="-6229868875486127407">
+<Attr module="_versions.GNN.V1_0_0.GNN" name="tensor">
+ <Depend module="" name="ml_core"/>
+ <Depend module="_versions.ML_Core.V3_2_2.ML_Core" name="types"/>
+ <Depend module="std.system" name="thorlib"/>
+ <Depend module="std.system" name="log"/>
+ <Depend name="python3"/>
+</Attr>
+</Cache>
