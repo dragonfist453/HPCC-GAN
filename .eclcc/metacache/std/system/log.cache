@@ -1,5 +1,0 @@
-<Cache hash="-6229868875486127407">
-<Attr module="std.system" name="log">
- <Depend name="lib_logging"/>
-</Attr>
-</Cache>
