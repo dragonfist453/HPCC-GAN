@@ -6,51 +6,116 @@ IMPORT GNN.Types;
 IMPORT GNN.GNNI;
 IMPORT GNN.Internal AS Int;
 IMPORT Std.System.Thorlib;
+IMPORT IMG.IMG;
+IMPORT GNN.Utils;
 t_Tensor := Tensor.R4.t_Tensor;
 TensData := Tensor.R4.TensData;
+FuncLayerDef := Types.FuncLayerDef;
 
 RAND_MAX := POWER(2,32) - 1;
 #option('outputLimit',200);
 
-//Input definition of records
+//Input data 
 
-// Test parameters
-trainCount := 1000;
-featureCount := 5;
-// END Test parameters
-
-// Prepare training data.
-// We use 5 inputs (X) and a single output (Y)
-trainRec := RECORD
-  UNSIGNED8 id;
-  SET OF REAL x;
+//Format of the image
+IMG_FORMAT := RECORD
+    UNSIGNED id;
+    DATA image;
 END;
 
-// Build the training data.  Pick random data for X values, and use a polynomial
-// function of X to compute Y.
-train0 := DATASET(trainCount, TRANSFORM(trainRec,
-                      SELF.id := COUNTER,
-                      SELF.x := [(RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5],)
-                      );
+//Format of labels
+LABEL_FORMAT := RECORD
+    UNSIGNED id;
+    DATA1 label;
+END;
 
-// Break the training and test data into X (independent) and Y (dependent) data sets.  Format as Tensor Data.
-trainX0 := NORMALIZE(train0, featureCount, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id, COUNTER],
-                            SELF.value := LEFT.x[COUNTER]));
 
-// Form a Tensor from the tensor data.  This packs the data into 'slices' that can contain dense
-// or sparse portions of the Tensor.  If the tensor is small, it will fit into a single slice.
-// Huge tensors may require many slices.  The slices also contain tensor metadata such as the shape.
-// For record oriented data, the first component of the shape should be 0, indicating that it is an
-// arbitrary length set of records.
-trainX := Tensor.R4.MakeTensor([0, featureCount], trainX0);
+//Train data definitions
+imgcount_train := 60000;
+imgRows := 28;
+imgCols := 28;
+imgChannels := 1;
+imgSize := imgRows * imgCols;
+latentDim := 100;
+numClasses := 10;
+
+mnist_train_images := IMG.MNIST_train_image(); //Returns MNIST training images record from IMG module
+
+//making sure that IMG works
+OUTPUT(mnist_train_images, ,'~thor::mnist_train_images',OVERWRITE); //works
+
+mnist_train_labels := IMG.MNIST_train_label(); //Returns MNIST training labels record from IMG module
+
+//making sure that IMG labels works too
+OUTPUT(mnist_train_labels, ,'~thor::mnist_train_labels',OVERWRITE); //works
+
+
+trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+                            SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
+                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.image[counter])); //works great. consumes lot of time as 47040000 records are made
+
+OUTPUT(trainX0, ,'tensor_data::X_train',OVERWRITE);
+ 
+trainY0 := NORMALIZE(mnist_train_labels, 1, TRANSFORM(TensData,
+                            SELF.indexes := [LEFT.id],
+                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.label)); //works great. much quicker than last one
+
+OUTPUT(trainY0, ,'~tensor_data::Y_train',OVERWRITE);
+
+//Call OneHotEncoder to get 10 output tensor
+trainY_OH := Utils.ToOneHot(trainY0, numClasses);
+OUTPUT(trainY_OH, ,'~tensor_data::Y_train_OH',OVERWRITE);
+
+//Builds tensors for the neural network
+trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
+trainY:= Tensor.R4.MakeTensor([0, numClasses], trainY_OH);
+
+//OUTPUT(trainX, ,'tensor::X_train',OVERWRITE);
+//OUTPUT(trainY, ,'tensor::y_train',OVERWRITE);
+
+
+//Test data definitions
+imgcount_test := 10000;
+
+mnist_test_images := IMG.MNIST_test_image(); //Returns MNIST test images record from IMG module
+
+//making sure that IMG works
+OUTPUT(mnist_test_images, ,'~thor::mnist_test_images',OVERWRITE); 
+
+mnist_test_labels := IMG.MNIST_test_label(); //Returns MNIST test labels record from IMG module
+
+//making sure that IMG labels works too
+OUTPUT(mnist_test_labels, ,'~thor::mnist_test_labels',OVERWRITE); 
+
+
+testX0 := NORMALIZE(mnist_test_images, imgSize, TRANSFORM(TensData,
+                            SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28 + 1, (COUNTER-1)%28 + 1, 1],
+                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.image[counter]));
+
+OUTPUT(testX0, ,'~tensor_data::X_test',OVERWRITE); //very slow. 47040000 records build here (takes storage)
+ 
+testY0 := NORMALIZE(mnist_test_labels, 1, TRANSFORM(TensData,
+                            SELF.indexes := [LEFT.id],
+                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.label));
+
+OUTPUT(testY0, ,'~tensor_data::Y_test',OVERWRITE); //much faster than image tensor
+
+//Call OneHotEncoder to get 10 output tensor
+testY_OH := Utils.ToOneHot(testY0, numClasses);
+OUTPUT(testY_OH, ,'~tensor_data::Y_test_OH',OVERWRITE);
+
+//Builds tensors for the neural network
+testX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], testX0);
+testY:= Tensor.R4.MakeTensor([0, numClasses], testY_OH);
+
+//OUTPUT(testX, ,'tensor::X_test',OVERWRITE);
+//OUTPUT(testY, ,'tensor::y_test',OVERWRITE);
+
 
 //Layer definition of models
-ldef_generator := ['''layers.LeakyReLU(alpha=0.2)''',
+ldef_generator := ['''layers.Input(shape=(100,))''',
+                    '''layers.Dense(256, input_dim=100)''',
+                    '''layers.LeakyReLU(alpha=0.2)''',    
                     '''layers.BatchNormalization(momentum=0.8)''',
                     '''layers.Dense(512)''',
                     '''layers.LeakyReLU(alpha=0.2)''',
@@ -58,9 +123,10 @@ ldef_generator := ['''layers.LeakyReLU(alpha=0.2)''',
                     '''layers.Dense(1024)''',
                     '''layers.LeakyReLU(alpha=0.2)''',
                     '''layers.BatchNormalization(momentum=0.8)''',
-                    '''layers.Dense(featureCount,activation='tanh')'''];
+                    '''layers.Dense(featureCount,activation='tanh')''',
+                    '''layers.Reshape((28,28,1))'''];
                     
-compiledef_generator := '''compile(loss='mse', optimizer=optimizer)''';                     
+compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=optimizer)''';                     
 
 /*
 Generator model in keras
@@ -79,13 +145,14 @@ Compile specs:-
         compile(loss='binary_crossentropy', optimizer=optimizer)
 */
 
-ldef_discriminator := ['''layers.Dense(512,input_dim=featureCount)''',
+ldef_discriminator := ['''layers.Flatten(input_shape=(28,28,1))''',
+                        '''layers.Dense(512,input_dim=featureCount)''',
                         '''layers.LeakyReLU(alpha=0.2)''',
                         '''layers.Dense(256)''',
                         '''layers.LeakyReLU(alpha=0.2)''',
                         '''layers.Dense(1,activation='sigmoid')'''];
 
-compiledef_discriminator := '''compile(loss='mse',
+compiledef_discriminator := '''compile(loss='binary_crossentropy',
                                 optimizer=optimizer,
                                 metrics=['accuracy'])''';                       
    
@@ -101,63 +168,26 @@ Compile specs:-
          compile(loss='binary_crossentropy',
             optimizer=optimizer,
             metrics=['accuracy'])         
-*/        
+*/
 
+fldef_combined := DATASET([{'noise','''''',[]}], 
+                FuncLayerDef);
+
+/*
+Ref
+fldef := DATASET([{'input1', '''layers.Input(shape=(5,))''', []},  // Regression Input
+                {'d1', '''layers.Dense(256, activation='tanh')''', ['input1']}, // Regression Hidden 1
+                {'d2', '''layers.Dense(256, activation='relu')''', ['d1']},   // Regression Hidden 2
+                {'output1', '''layers.Dense(1, activation=None)''', ['d2']}, // Regression Output
+                {'input2', '''layers.Input(shape=(5,))''', []}, // Classification Input
+                {'d3', '''layers.Dense(16, activation='tanh', input_shape=(5,))''',['input2']}, // Classification Hidden 1
+                {'d4', '''layers.Dense(16, activation='relu')''',['d3']}, // Classification Hidden 2
+                {'output2', '''layers.Dense(3, activation='softmax')''', ['d4']}], // Classification Output
+            FuncLayerDef);
+Input1 --> noise
+Output1 --> image
+Input2 --> image
+Output2 --> validity            
+*/            
 //Start session for GAN
 s := GNNI.GetSession();
-
-//Generator model definitiion
-generator := GNNI.DefineModel(s,ldef_generator,compiledef_generator);
-
-//Discriminator model definition
-discriminator := GNNI.DefineModel(s,ldef_generator,compiledef_generator);
-
-//Make record for y
-outputRec := RECORD
-        UNSIGNED8 id;
-        UNSIGNED8 num;
-END;
-
-batchsize := 32;
-
-//Give dataset with one constant (np.ones or np.zeros)
-outputRec fillwith(UNSIGNED8 i,UNSIGNED8 x) := TRANSFORM
-        SELF.id := i;
-        SELF.num := x;
-END;
-
-//Generate ones and zeros
-valid := DATASET(batchsize,fillwith(COUNTER,1));
-fake := DATASET(batchsize,fillwith(COUNTER,0));
-
-OUTPUT(valid, NAMED('valid'));
-OUTPUT(fake,NAMED('fake'));
-
-valid_ten := NORMALIZE(valid, 1, TRANSFORM(TensData,
-                        SELF.indexes := [LEFT.id,COUNTER],
-                        SELF.value := LEFT.num));
-
-valid_tensor := Tensor.R4.MakeTensor([0, 2], valid_ten);
-
-fake_ten := NORMALIZE(fake, 1, TRANSFORM(TensData,
-                        SELF.indexes := [LEFT.id,COUNTER],
-                        SELF.value := LEFT.num));
-
-fake_tensor := Tensor.R4.MakeTensor([0, 2], fake_ten);
-
-random_set := DATASET(trainCount, TRANSFORM(trainRec,
-                      SELF.id := COUNTER,
-                      SELF.x := [(RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5,
-                                  (RANDOM() % RAND_MAX) / RAND_MAX -.5],)
-                      );
-
-// Break the training and test data into X (independent) and Y (dependent) data sets.  Format as Tensor Data.
-rand := NORMALIZE(random_set, featureCount, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id, COUNTER],
-                            SELF.value := LEFT.x[COUNTER]));
-
-discriminator_model:= GNNI.Fit(discriminator, trainX,valid_tensor,batchSize := 128, numEpochs := 5);
-
