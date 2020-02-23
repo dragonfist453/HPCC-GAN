@@ -23,12 +23,6 @@ IMG_FORMAT := RECORD
     DATA image;
 END;
 
-//Format of labels
-LABEL_FORMAT := RECORD
-    UNSIGNED id;
-    DATA1 label;
-END;
-
 
 //Train data definitions
 imgcount_train := 60000;
@@ -38,81 +32,52 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
+batchSize := 128;
 
-mnist_train_images := IMG.MNIST_train_image(); //Returns MNIST training images record from IMG module
+//Take MNIST dataset using IMG module
+mnist_train_images := IMG.MNIST_train_image();
 
-//making sure that IMG works
-OUTPUT(mnist_train_images, ,'~thor::mnist_train_images',OVERWRITE); //works
+//OUTPUT(mnist_train_images, ,'~image_db::mnist_train_images',OVERWRITE);
 
-mnist_train_labels := IMG.MNIST_train_label(); //Returns MNIST training labels record from IMG module
-
-//making sure that IMG labels works too
-OUTPUT(mnist_train_labels, ,'~thor::mnist_train_labels',OVERWRITE); //works
-
-
+//Tensor dataset having image data normalised to range of -1 to 1
 trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
-                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.image[counter])); //works great. consumes lot of time as 47040000 records are made
+                            SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
-OUTPUT(trainX0, ,'tensor_data::X_train',OVERWRITE);
- 
-trainY0 := NORMALIZE(mnist_train_labels, 1, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id],
-                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.label)); //works great. much quicker than last one
+//Tensor dataset of 1s
+valid := DATASET(batchSize, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER, 1],
+                        SELF.value := 1));
 
-OUTPUT(trainY0, ,'~tensor_data::Y_train',OVERWRITE);
+//Tensor dataset of 0s
+fake := DATASET(batchSize, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER, 1],
+                        SELF.value := 0));
 
-//Call OneHotEncoder to get 10 output tensor
-trainY_OH := Utils.ToOneHot(trainY0, numClasses);
-OUTPUT(trainY_OH, ,'~tensor_data::Y_train_OH',OVERWRITE);
+//Random set of normal data
+/*random_data := DATASET(batchSize*latentDim, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER, (COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1, 1],
+                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1)); */
+
+random_data := DATASET(latentDim, TRANSFORM(TensData,
+                        SELF.indexes := [1, (COUNTER-1)%latentDim + 1],
+                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+
+//whatisthis := SET(random_yeah, value);
+
+//OUTPUT(whatisthis);
+
+//OUTPUT(random_data, NAMED('whatever'));
 
 //Builds tensors for the neural network
 trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
-trainY:= Tensor.R4.MakeTensor([0, numClasses], trainY_OH);
-
-//OUTPUT(trainX, ,'tensor::X_train',OVERWRITE);
-//OUTPUT(trainY, ,'tensor::y_train',OVERWRITE);
-
-
-//Test data definitions
-imgcount_test := 10000;
-
-mnist_test_images := IMG.MNIST_test_image(); //Returns MNIST test images record from IMG module
-
-//making sure that IMG works
-OUTPUT(mnist_test_images, ,'~thor::mnist_test_images',OVERWRITE); 
-
-mnist_test_labels := IMG.MNIST_test_label(); //Returns MNIST test labels record from IMG module
-
-//making sure that IMG labels works too
-OUTPUT(mnist_test_labels, ,'~thor::mnist_test_labels',OVERWRITE); 
-
-
-testX0 := NORMALIZE(mnist_test_images, imgSize, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28 + 1, (COUNTER-1)%28 + 1, 1],
-                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.image[counter]));
-
-OUTPUT(testX0, ,'~tensor_data::X_test',OVERWRITE); //very slow. 47040000 records build here (takes storage)
- 
-testY0 := NORMALIZE(mnist_test_labels, 1, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id],
-                            SELF.value := (REAL) (>UNSIGNED1<) LEFT.label));
-
-OUTPUT(testY0, ,'~tensor_data::Y_test',OVERWRITE); //much faster than image tensor
-
-//Call OneHotEncoder to get 10 output tensor
-testY_OH := Utils.ToOneHot(testY0, numClasses);
-OUTPUT(testY_OH, ,'~tensor_data::Y_test_OH',OVERWRITE);
-
-//Builds tensors for the neural network
-testX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], testX0);
-testY:= Tensor.R4.MakeTensor([0, numClasses], testY_OH);
-
-//OUTPUT(testX, ,'tensor::X_test',OVERWRITE);
-//OUTPUT(testY, ,'tensor::y_test',OVERWRITE);
+train_valid := Tensor.R4.MakeTensor([0,1],valid);
+train_fake := Tensor.R4.MakeTensor([0,1],fake);
+noise := Tensor.R4.MakeTensor([0,latentDim], random_data);
 
 
 //Layer definition of models
+//Generator model definition information
 ldef_generator := ['''layers.Input(shape=(100,))''',
                     '''layers.Dense(256, input_dim=100)''',
                     '''layers.LeakyReLU(alpha=0.2)''',    
@@ -123,10 +88,10 @@ ldef_generator := ['''layers.Input(shape=(100,))''',
                     '''layers.Dense(1024)''',
                     '''layers.LeakyReLU(alpha=0.2)''',
                     '''layers.BatchNormalization(momentum=0.8)''',
-                    '''layers.Dense(featureCount,activation='tanh')''',
+                    '''layers.Dense(784,activation='tanh')''',
                     '''layers.Reshape((28,28,1))'''];
                     
-compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=optimizer)''';                     
+compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                     
 
 /*
 Generator model in keras
@@ -145,15 +110,17 @@ Compile specs:-
         compile(loss='binary_crossentropy', optimizer=optimizer)
 */
 
-ldef_discriminator := ['''layers.Flatten(input_shape=(28,28,1))''',
-                        '''layers.Dense(512,input_dim=featureCount)''',
+//Discriminator model definition information
+ldef_discriminator := ['''layers.Input(shape=(28,28,1))''',
+                        '''layers.Flatten(input_shape=(28,28,1))''',
+                        '''layers.Dense(512)''',
                         '''layers.LeakyReLU(alpha=0.2)''',
                         '''layers.Dense(256)''',
                         '''layers.LeakyReLU(alpha=0.2)''',
                         '''layers.Dense(1,activation='sigmoid')'''];
 
 compiledef_discriminator := '''compile(loss='binary_crossentropy',
-                                optimizer=optimizer,
+                                optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
                                 metrics=['accuracy'])''';                       
    
 /*
@@ -170,24 +137,51 @@ Compile specs:-
             metrics=['accuracy'])         
 */
 
-fldef_combined := DATASET([{'noise','''''',[]}], 
+//Combined model definition information
+fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
+                        {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
+                        {'g2','''layers.LeakyReLU(alpha=0.2)''',['g1']},                //Generator layer 2
+                        {'g3','''layers.BatchNormalization(momentum=0.8)''',['g2']},    //Generator layer 3
+                        {'g4','''layers.Dense(512)''',['g3']},                          //Generator layer 4
+                        {'g5','''layers.LeakyReLU(alpha=0.2)''',['g4']},                //Generator layer 5
+                        {'g6','''layers.BatchNormalization(momentum=0.8)''',['g5']},    //Generator layer 6
+                        {'g7','''layers.Dense(1024)''',['g6']},                         //Generator layer 7
+                        {'g8','''layers.LeakyReLU(alpha=0.2)''',['g7']},                //Generator layer 8
+                        {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9
+                        {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10
+                        {'img','''layers.Reshape((28,28,1))''',['g10']},                //Generate output
+                        {'input_d','''layers.Input(shape=(28,28,1))''',['img']},        //Input of image from Generator
+                        {'d1','''layers.Flatten(input_shape=(28,28,1))''',['input_d']}, //Discriminator layer 1
+                        {'d2','''layers.Dense(512)''',['d1']},   //Discriminator layer 2
+                        {'d3','''layers.LeakyReLU(alpha=0.2)''',['d2']},                //Discriminator layer 3
+                        {'d4','''layers.Dense(256)''',['d3']},                          //Discriminator layer 4
+                        {'d5','''layers.LeakyReLU(alpha=0.2)''',['d4']},                //Discriminator layer 5
+                        {'validity','''layers.Dense(1,activation='sigmoid')''',['d5']}],//Output of Discriminator, valid image or not
                 FuncLayerDef);
 
+compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
+
 /*
-Ref
-fldef := DATASET([{'input1', '''layers.Input(shape=(5,))''', []},  // Regression Input
-                {'d1', '''layers.Dense(256, activation='tanh')''', ['input1']}, // Regression Hidden 1
-                {'d2', '''layers.Dense(256, activation='relu')''', ['d1']},   // Regression Hidden 2
-                {'output1', '''layers.Dense(1, activation=None)''', ['d2']}, // Regression Output
-                {'input2', '''layers.Input(shape=(5,))''', []}, // Classification Input
-                {'d3', '''layers.Dense(16, activation='tanh', input_shape=(5,))''',['input2']}, // Classification Hidden 1
-                {'d4', '''layers.Dense(16, activation='relu')''',['d3']}, // Classification Hidden 2
-                {'output2', '''layers.Dense(3, activation='softmax')''', ['d4']}], // Classification Output
-            FuncLayerDef);
+Combined model is Generator + Discriminator
 Input1 --> noise
 Output1 --> image
 Input2 --> image
 Output2 --> validity            
 */            
+
 //Start session for GAN
-s := GNNI.GetSession();
+//s1 := GNNI.GetSession();
+
+//generator := GNNI.DefineModel(s1, ldef_generator, compiledef_generator); //Generator model definition
+
+s2 := GNNI.GetSession();
+
+//discriminator := GNNI.DefineModel(s2, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
+
+combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+
+gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
+
+gen_data := Tensor.R4.GetData(gen_imgs);
+
+OUTPUT(gen_data, ,'~GAN::deleteafterseeing',OVERWRITE);
