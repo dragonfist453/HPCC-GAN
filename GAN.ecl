@@ -150,8 +150,8 @@ fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},       
                         {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9
                         {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10
                         {'img','''layers.Reshape((28,28,1))''',['g10']},                //Generate output
-                        {'input_d','''layers.Input(shape=(28,28,1))''',['img']},        //Input of image from Generator
-                        {'d1','''layers.Flatten(input_shape=(28,28,1))''',['input_d']}, //Discriminator layer 1
+                        //{'input_d','''layers.Input(shape=(28,28,1))''',['img']},        //Input of image from Generator
+                        {'d1','''layers.Flatten(input_shape=(28,28,1))''',['img']}, //Discriminator layer 1
                         {'d2','''layers.Dense(512)''',['d1']},   //Discriminator layer 2
                         {'d3','''layers.LeakyReLU(alpha=0.2)''',['d2']},                //Discriminator layer 3
                         {'d4','''layers.Dense(256)''',['d3']},                          //Discriminator layer 4
@@ -174,14 +174,33 @@ Output2 --> validity
 
 //generator := GNNI.DefineModel(s1, ldef_generator, compiledef_generator); //Generator model definition
 
-s2 := GNNI.GetSession();
+//s2 := GNNI.GetSession();
 
 //discriminator := GNNI.DefineModel(s2, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 
-combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+//combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
 
-gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
+//gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
 
-gen_data := Tensor.R4.GetData(gen_imgs);
+//gen_data := Tensor.R4.GetData(gen_imgs);
 
-OUTPUT(gen_data, ,'~GAN::deleteafterseeing',OVERWRITE);
+//OUTPUT(gen_data, ,'~GAN::deleteafterseeing',OVERWRITE);
+
+OK := RECORD
+        UNSIGNED8 id;
+        UNSIGNED8 value;
+END;
+
+random_index := DATASET(batchSize, TRANSFORM(OK,
+                                SELF.id := COUNTER;
+                                SELF.value := RANDOM() % 60000));
+
+OUTPUT(random_index);       
+
+//Things to do here
+//In a loop, extract samples from trainX tensor using above transform, for every batch
+//Give combined both generated and actual by passing noise and getting 1 output img from generator
+//Train it for how many ever epochs using the looping algorithm given 
+//Optimise and remove lines. Make storage. Keep stuff to show 
+//Output generated images after GAN trains as images. Add that output mechanism to IMG module
+//That's it for now tbh
