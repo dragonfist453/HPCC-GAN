@@ -170,43 +170,39 @@ Output2 --> validity
 */            
 
 //Start session for GAN
-//s1 := GNNI.GetSession();
+s1 := GNNI.GetSession();
 
-//generator := GNNI.DefineModel(s1, ldef_generator, compiledef_generator); //Generator model definition
+generator := GNNI.DefineModel(s1, ldef_generator, compiledef_generator); //Generator model definition
 
-//s2 := GNNI.GetSession();
+s2 := GNNI.GetSession();
 
 //discriminator := GNNI.DefineModel(s2, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 
-//combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
 
-//gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
+gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
 
-//gen_data := Tensor.R4.GetData(gen_imgs);
+gen_data := Tensor.R4.GetData(gen_imgs);
 
-//OUTPUT(gen_data, ,'~GAN::deleteafterseeing',OVERWRITE);
+OUTPUT(gen_data, NAMED('yowhat'));
 
-OK := RECORD
-        UNSIGNED8 id;
-        UNSIGNED8 value;
-END;
+gen_imgs1 := GNNI.Predict(generator, noise); //Just to test if all dimensions are correct and if it predicts without any training
 
-random_index := DATASET(batchSize, TRANSFORM(OK,
-                                SELF.id := COUNTER;
-                                SELF.value := RANDOM() % 60000));
+gen_data1 := Tensor.R4.GetData(gen_imgs1);
 
-OUTPUT(random_index);       
+OUTPUT(gen_data1, NAMED('yowhat1'));
+     
 
 //Things to do here
-//In a loop, extract samples from trainX tensor using above transform, for every batch
 //Give combined both generated and actual by passing noise and getting 1 output img from generator
 //Train it for how many ever epochs using the looping algorithm given 
 //Optimise and remove lines. Make storage. Keep stuff to show 
 //Output generated images after GAN trains as images. Add that output mechanism to IMG module
 //That's it for now tbh
 
+
 /*
-How to loop for iterative training of GANs
+//How to loop for iterative training of GANs
 // Combine X and Y into one dataset
 maxX_work_item := MAX(xData);
 adjY := PROJECT(yData, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi + maxX_work_item, SELF := LEFT));
