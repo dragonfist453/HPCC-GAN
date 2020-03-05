@@ -41,7 +41,7 @@ mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
 trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
-                            SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
+                            SELF.indexes := [LEFT.id, (COUNTER-1)%28+1, (COUNTER-1) DIV 28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
 //Tensor dataset of 1s
@@ -89,7 +89,7 @@ ldef_generator := ['''layers.Input(shape=(100,))''',
                     '''layers.LeakyReLU(alpha=0.2)''',
                     '''layers.BatchNormalization(momentum=0.8)''',
                     '''layers.Dense(784,activation='tanh')''',
-                    '''layers.Reshape((28,28,1))'''];
+                    '''layers.Reshape((1,28,28,1))'''];
                     
 compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                     
 
@@ -137,6 +137,7 @@ Compile specs:-
             metrics=['accuracy'])         
 */
 
+/*
 //Combined model definition information
 fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
                         {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
@@ -160,7 +161,7 @@ fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},       
                 FuncLayerDef);
 
 compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
-
+*/
 /*
 Combined model is Generator + Discriminator
 Input1 --> noise
@@ -170,51 +171,70 @@ Output2 --> validity
 */            
 
 //Start session for GAN
-s1 := GNNI.GetSession();
+s := GNNI.GetSession();
 
-generator := GNNI.DefineModel(s1, ldef_generator, compiledef_generator); //Generator model definition
+generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Generator model definition
 
-s2 := GNNI.GetSession();
+discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 
-//discriminator := GNNI.DefineModel(s2, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
+//combined := GNNI.DefineFuncModel(s, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
 
-combined := GNNI.DefineFuncModel(s2, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+//Prerequisite for sequential training
+maxX_work_item := MAX(trainX,wi);
+adjY := PROJECT(train_valid, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi + maxX_work_item, SELF := LEFT));
+xyData := trainX + adjY;
 
-gen_imgs := GNNI.Predict(combined, noise); //Just to test if all dimensions are correct and if it predicts without any training
+//loopFunc(DATASET(t_Tensor) xyData, UNSIGNED ctr) := FUNCTION
 
-gen_data := Tensor.R4.GetData(gen_imgs);
+        trainX_cur := xyData(wi <= maxX_work_item); // Recover X data
+        train_valid_cur := PROJECT(xyData(wi > maxX_work_item), TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi - maxX_work_item, SELF := LEFT));// Recover Y data
 
-OUTPUT(gen_data, NAMED('yowhat'));
+        gen_imgs := GNNI.Predict(generator, noise); //Generate images from noise
 
-gen_imgs1 := GNNI.Predict(generator, noise); //Just to test if all dimensions are correct and if it predicts without any training
+        //This has problems as we need to fit a random batch and not fit the whole dataset for GAN. This will cause overfitting which is BAD. 
+
+        discriminator_real := GNNI.Fit(discriminator, trainX_cur, train_valid_cur, numEpochs := 1); //Fit real
+        discriminator_fake := GNNI.Fit(discriminator_real, gen_imgs, train_fake, numEpochs := 1); //Fit fake
+
+        generator_net := GNNI.Fit(generator, noise, train_valid_cur, numEpochs := 1); //Fit generator and make it believe that it's noise is valid
+
+        //RETURN true;
+//END;
+
+//numIterations := 1;
+//finalXY := LOOP(xyData, numIterations, loopFunc(ROWS(LEFT), COUNTER));
+
+gen_imgs1 := GNNI.Predict(generator_net, noise); //Just to test if all dimensions are correct and if it predicts without any training
+
+gen_imgs2 := GNNI.Predict(discriminator_fake, gen_imgs1); //Just to test if all dimensions are correct and if it predicts without any training
+
+gen_data := Tensor.R4.GetData(gen_imgs2);
 
 gen_data1 := Tensor.R4.GetData(gen_imgs1);
 
-OUTPUT(gen_data1, NAMED('yowhat1'));
+img_data := NORMALIZE(gen_data1, 1, TRANSFORM(IMG_FORMAT,
+                        SELF.id := LEFT.indexes[1]*LEFT.indexes[2]*LEFT.indexes[3],
+                        SELF.image := (>DATA<) (UNSIGNED1) ((REAL) LEFT.value*127.5 + 1)
+                        ));
+
+OUTPUT(img_data, NAMED('gen'));                        
+OUTPUT(gen_data, NAMED('diss'));
      
-
-//Things to do here
-//Give combined both generated and actual by passing noise and getting 1 output img from generator
-//Train it for how many ever epochs using the looping algorithm given 
-//Optimise and remove lines. Make storage. Keep stuff to show 
-//Output generated images after GAN trains as images. Add that output mechanism to IMG module
-//That's it for now tbh
-
 
 /*
 //How to loop for iterative training of GANs
 // Combine X and Y into one dataset
-maxX_work_item := MAX(xData);
-adjY := PROJECT(yData, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi + maxX_work_item, SELF := LEFT));
-xyData := xData + adjY;
+maxX_work_item := MAX(trainX);
+adjY := PROJECT(valid, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi + maxX_work_item, SELF := LEFT));
+xyData := trainX + adjY;
 
 // Loop function
 loopFunc(DATASET(t_Tensor) xyData, UNSIGNED ctr) := FUNCTION
-xDat := xyData(wi <= maxX_work_item) // Recover X data
+trainX := xyData(wi <= maxX_work_item) // Recover X data
 // Recover Y data
-yDat := PROJECT(xyData(wi > maxX_work_item, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi - maxX_work_item, SELF := LEFT));
-modelId := GNNI.Fit(modelId, xDat, yDat, numEpochs = 1);
-newYDat := Predict(.....)
+valid := PROJECT(xyData(wi > maxX_work_item, TRANSFORM(RECORDOF(LEFT), SELF.wi := LEFT.wi - maxX_work_item, SELF := LEFT));
+modelId := GNNI.Fit(, trainX, valid, numEpochs = 1);
+newYDat := Predict()
 // Now merge predictions back into X or Y data
 ...
 // Now re-combine X and Y
@@ -222,4 +242,13 @@ newYDat := Predict(.....)
 END;
 
 finalXY := LOOP(xyData, numIterations, loopFunc(ROWS(LEFT), COUNTER));
+*/
+
+
+/*
+Useful for visualising the output when it's there
+img_data := NORMALIZE(gen_data1, 1, TRANSFORM(IMG_FORMAT,
+                        SELF.id := LEFT.indexes[1]*LEFT.indexes[2]*LEFT.indexes[3],
+                        SELF.image := (>DATA<) (UNSIGNED1) ((REAL) LEFT.value*127.5 + 1)
+                        ));
 */
