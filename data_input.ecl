@@ -1,41 +1,44 @@
 IMPORT Python3 as Python;
-
+IMPORT GNN.GNNI;
+IMPORT GNN.Tensor;
+IMPORT GNN.Types;
+IMPORT IMG.IMG;
+IMPORT GNN.Internal as int;
+TensData := Tensor.R4.TensData;
+t_Tensor := Tensor.R4.t_Tensor;
+RAND_MAX := POWER(2,32) - 1;
 #option('outputLimit',200);
 
-Fraud := RECORD
-    INTEGER Time;
-    REAL V1;
-    REAL V2;
-    REAL V3;
-    REAL V4;
-    REAL V5;
-    REAL V6;
-    REAL V7;
-    REAL V8;
-    REAL V9;
-    REAL V10;
-    REAL V11;
-    REAL V12;
-    REAL V13;
-    REAL V14;
-    REAL V15;
-    REAL V16;
-    REAL V17;
-    REAL V18;
-    REAL V19;
-    REAL V20;
-    REAL V21;
-    REAL V22;
-    REAL V23;
-    REAL V24;
-    REAL V25;
-    REAL V26;
-    REAL V27;
-    REAL V28;
-    REAL Amount;
-    BOOLEAN Class;
+//Format of the image
+IMG_FORMAT := RECORD
+    UNSIGNED id;
+    DATA image;
 END;
 
-fraudData := DATASET('~gan::test::creditcard.csv',Fraud,CSV);
 
-OUTPUT(fraudData,NAMED('credit_card_fraud'));
+//Train data definitions
+imgcount_train := 60000;
+imgRows := 28;
+imgCols := 28;
+imgChannels := 1;
+imgSize := imgRows * imgCols;
+latentDim := 100;
+numClasses := 10;
+batchSize := 100;
+
+//Take MNIST dataset using IMG module
+mnist_train_images := IMG.MNIST_train_image();
+
+//OUTPUT(mnist_train_images, ,'~image_db::mnist_train_images',OVERWRITE);
+
+//Tensor dataset having image data normalised to range of -1 to 1
+trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+                            SELF.indexes := [LEFT.id, (COUNTER-1)%28+1, (COUNTER-1) DIV 28+1, 1],
+                            SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
+
+//Builds tensors for the neural network
+trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
+
+something := int.TensExtract(trainX, 45, batchSize);
+
+OUTPUT(Tensor.R4.GetRecordCount(something));                   
