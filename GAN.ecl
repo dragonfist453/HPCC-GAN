@@ -121,6 +121,8 @@ s := GNNI.GetSession();
 //Function to be modified as the logic of GANs is incorrect below. Generator does not train which is bad
 //Other than that, this is ideal function which must be optimised to add to GNN module. It takes what is required and rest is to be taken care of inside the function.
 //Optimise further after basic completion and discussion with Roger. This will go awesome. Believe in yourself :")
+
+//Returns model ID to predict using the GAN
 UNSIGNED4 GAN_train(UNSIGNED4 session,
                         DATASET(t_Tensor) input,
                         UNSIGNED4 batchSize = 100,
