@@ -120,7 +120,7 @@ s := GNNI.GetSession();
 
 //Function to be modified as the logic of GANs is incorrect below. Generator does not train which is bad
 //Other than that, this is ideal function which must be optimised to add to GNN module. It takes what is required and rest is to be taken care of inside the function.
-//Optimise further after basic completion and discussion with Roger
+//Optimise further after basic completion and discussion with Roger. This will go awesome. Believe in yourself :")
 UNSIGNED4 GAN_train(UNSIGNED4 session,
                         DATASET(t_Tensor) input,
                         UNSIGNED4 batchSize = 100,
@@ -183,11 +183,13 @@ UNSIGNED4 GAN_train(UNSIGNED4 session,
                 //Fitting real data
                 discriminator_fooled := GNNI.Fit(discriminator_fake, gen_X_dat2, valid, numEpochs, batchSize);
 
-                gen_loss := GNNI.GetLoss(generator);
-                dis_loss := GNNI.GetLoss(discriminator_fooled);
                 newWts := GNNI.GetWeights(generator);
-
-                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum+' Generator loss : '+gen_loss+' Discriminator loss : '+dis_loss);
+                //gen_loss := IF(EXISTS(newWts), GNNI.GetLoss(generator), 0);
+                //dis_loss := IF(EXISTS(newWts), GNNI.GetLoss(discriminator_fooled), 0);
+                
+                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum
+                //+' Generator loss : '+gen_loss+' Discriminator loss : '+dis_loss
+                );
                 RETURN WHEN(newWts, logProgress);
         END;        
 
