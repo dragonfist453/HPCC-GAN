@@ -180,8 +180,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                                                         ));
 
                 //New model IDs
-                loopDiscriminator := discriminator + epochNum + 1;
-                loopCombined := combined + epochNum + 1;
+                loopDiscriminator := discriminator + epochNum;
+                loopCombined := combined + epochNum;
 
                 //Setting new weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
