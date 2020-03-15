@@ -38,7 +38,7 @@ trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 ));
 
-trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0);   
+trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], choosen(trainX0,1));   
 
 //GENERATOR
 //Generator model definition information
@@ -99,19 +99,22 @@ compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, opti
 s := GNNI.GetSession();
 
 generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Generator model definition
+gen := OUTPUT(generator, NAMED('generator_id'));
 
 discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
+dis := OUTPUT(discriminator, NAMED('discriminator_id'));
 
 combined := GNNI.DefineFuncModel(s, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+com := OUTPUT(combined, NAMED('combined_id'));
 
 //Noise for generator to make fakes
-random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-        SELF.indexes := [(COUNTER-1) DIV batchSize + 1, (COUNTER-1)%latentDim + 1],
+random_data1 := DATASET(latentDim, TRANSFORM(TensData,
+        SELF.indexes := [COUNTER, (COUNTER-1)%latentDim + 1],
         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
 noise := Tensor.R4.MakeTensor([batchSize,latentDim], random_data1);
 
 //Dataset of 1s for classification
-valid_data := DATASET(batchSize, TRANSFORM(TensData,
+valid_data := DATASET(1, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
                 SELF.value := 1));
 valid := Tensor.R4.MakeTensor([0,1],valid_data);
@@ -134,6 +137,8 @@ gen_imgs := GNNI.Predict(combined, noise);
 
 gen_data2 := Tensor.R4.GetData(gen_imgs);
 
-//OUTPUT(gen_data1, NAMED('gen'));   
-OUTPUT(gen_data, NAMED('diss'));                     
-OUTPUT(gen_data2, NAMED('comb'));
+OUT_G := OUTPUT(gen_data1, NAMED('gen'));   
+OUT_D := OUTPUT(gen_data, NAMED('diss'));                     
+OUT_C := OUTPUT(gen_data2, NAMED('comb'));
+
+SEQUENTIAL(OUT_G,OUT_D,OUT_C);
