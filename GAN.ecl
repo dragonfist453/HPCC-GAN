@@ -45,7 +45,7 @@ random_data := DATASET(latentDim, TRANSFORM(TensData,
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
                      
 //Builds tensors for the neural network
-trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
+trainX := Tensor.R4.MakeTensor([imgcount_train, imgRows, imgCols, 1], trainX0); 
 train_noise := Tensor.R4.MakeTensor([batchSize,latentDim], random_data);
 
 
@@ -164,9 +164,9 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         DATASET(t_Tensor) train(DATASET(t_Tensor) wts, UNSIGNED4 epochNum) := FUNCTION
                 //Random position in Tensor which is (batchSize) less than COUNT(input)
                 batchPos := RANDOM()%(recordCount - batchSize);
-
+                
                 //Extract (batchSize) tensors starting from a random batchPos from the tensor input. Now we have a random input images of (batchSize) rows.
-                X_dat := int.TensExtract(input, batchPos, batchSize);
+                X_dat := int.TensExtract(input, batchPos, 100);
 
                 //Noise for generator to make fakes
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,

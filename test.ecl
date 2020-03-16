@@ -102,7 +102,7 @@ generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Genera
 
 discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 
-combined := GNNI.DefineFuncModel(s, fldef_combined, ['noise'],['validity'],compiledef_combined); //Combined model definition
+combined := GNNI.DefineFuncModel(s, fldef_combined, ['noise','img'],['img','validity'],compiledef_combined); //Combined model definition
 
 //Noise for generator to make fakes
 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,

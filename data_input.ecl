@@ -33,10 +33,14 @@ batchSize := 100;
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
 
+OUTPUT(mnist_train_images, ,'~test::images');
+
 //Tensor dataset having image data normalised to range of -1 to 1
 trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 ));
+
+OUTPUT(trainX0, ,'~test::out', OVERWRITE);                            
 
 trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], choosen(trainX0,1));   
 
