@@ -46,12 +46,11 @@ random_data := DATASET(latentDim, TRANSFORM(TensData,
                      
 //Builds tensors for the neural network
 trainX := Tensor.R4.MakeTensor([imgcount_train, imgRows, imgCols, 1], trainX0); 
-train_noise := Tensor.R4.MakeTensor([batchSize,latentDim], random_data);
+train_noise := Tensor.R4.MakeTensor([0,latentDim], random_data);
 
 
-//Function to be modified as the logic of GANs is incorrect below. Generator does not train which is bad
-//Other than that, this is ideal function which must be optimised to add to GNN module. It takes what is required and rest is to be taken care of inside the function.
-//Optimise further after basic completion and discussion with Roger. This will go awesome. Believe in yourself :")
+//Function's logic seems to be perfect after integration of transfer of weights and non-trainable layers. 
+//Must check for errors and correct them as mucn as possible. Please do work, I pray to gods for this ;_;
 
 //Please address later about how users can change the layers efficiently. VERY IMPORTANT.
 //Returns model ID to predict using the GAN
@@ -120,13 +119,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                                 {'g8','''layers.LeakyReLU(alpha=0.2)''',['g7']},                //Generator layer 8
                                 {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9
                                 {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10
-                                {'img','''layers.Reshape((1,28,28,1))''',['g10']},                //Generate output
-                                {'d1','''layers.Flatten(input_shape=(28,28,1))''',['img']}, //Discriminator layer 1
-                                {'d2','''layers.Dense(512)''',['d1']},   //Discriminator layer 2
-                                {'d3','''layers.LeakyReLU(alpha=0.2)''',['d2']},                //Discriminator layer 3
-                                {'d4','''layers.Dense(256)''',['d3']},                          //Discriminator layer 4
-                                {'d5','''layers.LeakyReLU(alpha=0.2)''',['d4']},                //Discriminator layer 5
-                                {'validity','''layers.Dense(1,activation='sigmoid')''',['d5']}],//Output of Discriminator, valid image or not
+                                {'img','''layers.Reshape((1,28,28,1),trainable = False)''',['g10']},                //Generate output
+                                {'d1','''layers.Flatten(input_shape=(28,28,1),trainable = False)''',['img']}, //Discriminator layer 1
+                                {'d2','''layers.Dense(512,trainable = False)''',['d1']},   //Discriminator layer 2
+                                {'d3','''layers.LeakyReLU(alpha=0.2,trainable = False)''',['d2']},                //Discriminator layer 3
+                                {'d4','''layers.Dense(256,trainable = False)''',['d3']},                          //Discriminator layer 4
+                                {'d5','''layers.LeakyReLU(alpha=0.2,trainable = False)''',['d4']},                //Discriminator layer 5
+                                {'validity','''layers.Dense(1,activation='sigmoid',trainable = False)''',['d5']}],//Output of Discriminator, valid image or not
                         FuncLayerDef);
 
         compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
@@ -146,20 +145,10 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         fake_data := DATASET(batchSize, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
                         SELF.value := 0));
-        fake := Tensor.R4.MakeTensor([0,batchSize],fake_data);
+        fake := Tensor.R4.MakeTensor([0,batchSize],fake_data);   
 
-        //The required weights
-        combWts := GNNI.GetWeights(combined);
-        discWts := GNNI.GetWeights(discriminator);
-
-        //Combine wts together to form one set
-        //max_comb_wi := MAX(combWts, wi);
-        HUGE := 6872627;
-        adjDiscWts := PROJECT(discWts, TRANSFORM(RECORDOF(LEFT),
-                                        SELF.wi := LEFT.wi + HUGE,
-                                        SELF := LEFT
-                                        ));
-        wts := combWts + adjDiscWts;                                
+        //Get only initial combined weights
+        wts := GNNI.GetWeights(combined);             
 
         DATASET(t_Tensor) train(DATASET(t_Tensor) wts, UNSIGNED4 epochNum) := FUNCTION
                 //Random position in Tensor which is (batchSize) less than COUNT(input)
@@ -172,28 +161,26 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV batchSize + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
-                train_noise1 := Tensor.R4.MakeTensor([batchSize,latentDim], random_data1);
-
-                //Extract individual weights from the combined tensor
-                comWts := wts(wi<=HUGE);
-                disWts := PROJECT(wts(wi>HUGE), TRANSFORM(RECORDOF(LEFT),
-                                                        SELF.wi := LEFT.wi-HUGE,
-                                                        SELF := LEFT
-                                                        ));
+                train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
                 loopDiscriminator := discriminator + epochNum;
                 loopCombined := combined + epochNum;
+                loopGenerator := generator + epochNum;
+
+                //Split weights accordingly. Generator layer <=20. Discriminator layers > 20. Combined layers - all.
+                genWts := SORT(wts(wi <= 20), wi, sliceid, LOCAL);
+                disWts := SORT(wts(wi > 20), wi, sliceid, LOCAL);
 
                 //Setting new weights
-                discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
-                combined1 := GNNI.SetWeights(loopCombined, comWts);
+                discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts);
+                generator1 := GNNI.SetWeights(loopGenerator, genWts); 
 
                 //Fitting real data
                 discriminator2 := GNNI.Fit(discriminator1, X_dat, valid, 1, batchSize);
 
                 //Predicting using Generator for fake images
-                gen_X_dat1 := GNNI.Predict(generator, train_noise1);
+                gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
                 
                 //Fitting random data
                 discriminator3 := GNNI.Fit(discriminator2, gen_X_dat1, fake, 1, batchSize);
@@ -202,62 +189,56 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV batchSize + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
-                train_noise2 := Tensor.R4.MakeTensor([batchSize,latentDim], random_data2);
+                train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
+
+                //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
+                updateddisWts := GNNI.GetWeights(discriminator3);
+                newdisWts := PROJECT(updateddisWts, TRANSFORM(t_Tensor,
+                                        SELF.nodeId := LEFT.nodeId,
+                                        SELF.wi := LEFT.wi + 20,
+                                        SELF.sliceid := LEFT.sliceid,
+                                        SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                                        SELF.dataType := LEFT.dataType,
+                                        SELF.maxslicesize := LEFT.maxslicesize,
+                                        SELF.slicesize := LEFT.slicesize,
+                                        SELF.denseData := LEFT.denseData,
+                                        SELF.sparseData := LEFT.sparseData
+                                        ));
+                comWts := SORT(newdisWts(wi > 20) + wts(wi<=20), wi, sliceid, LOCAL);
+                combined1 := GNNI.SetWeights(loopCombined, comWts);
 
                 //Train generator using combined model
                 combined2 := GNNI.Fit(combined1, train_noise2, valid, 1, batchSize);
 
-                //Get weights of the models
-                newcombWts := GNNI.GetWeights(combined2);
-                newdiscWts := GNNI.GetWeights(discriminator3);
-
-                //Combine wts together to form one set
-                //max_com_wi := MAX(newcombWts, wi);
-                adjDisWts := PROJECT(newdiscWts, TRANSFORM(RECORDOF(LEFT),
-                                                SELF.wi := LEFT.wi + HUGE,
-                                                SELF := LEFT
-                                                ));
-                newWts := newcombWts + adjDisWts;
-
-                //gen_loss := IF(EXISTS(newWts), GNNI.GetLoss(generator), 0);
-                //dis_loss := IF(EXISTS(newWts), GNNI.GetLoss(discriminator_fooled), 0);
+                //Get combined weights to return
+                newWts := GNNI.GetWeights(combined2);
                 
-                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum
-                //+' Generator loss : '+gen_loss+' Discriminator loss : '+dis_loss
-                );
+                //Logging progress when done
+                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum);
 
+                //List of actions to do in order before log progress and returning weights
                 actions := ORDERED(discriminator1, combined1, discriminator2, discriminator3, combined2, logProgress);
 
                 RETURN WHEN(newWts, actions, BEFORE);
         END;        
 
+        //Call loop to train numEpochs times
         finalWts := LOOP(wts, ROUNDUP(numEpochs), train(ROWS(LEFT),COUNTER));
 
-        //Extract individual weights from the combined tensor
-        comWts := finalWts(wi<=HUGE);
-        disWts := PROJECT(wts(wi>HUGE), TRANSFORM(RECORDOF(LEFT),
-                                                SELF.wi := LEFT.wi-HUGE,
-                                                SELF := LEFT
-                                                ));
-
         //Final model IDs
-        finalDiscriminator := discriminator + numEpochs + 1;
-        finalCombined := combined + numEpochs + 1;
-
-        //OUTPUT actions
-        //dis_out := OUTPUT(finalDiscriminator, NAMED('discriminator_id'));
-        //com_out := OUTPUT(finalCombined, NAMED('combined_id'));
+        finalGenerator := generator + numEpochs + 1;
 
         //Setting new weights
-        discriminator_trained := GNNI.SetWeights(finalDiscriminator, disWts); 
-        combined_trained := GNNI.SetWeights(finalCombined, comWts);
+        genWts := SORT(finalWts(wi<=20), wi, sliceid, LOCAL);
+        generator_trained := GNNI.SetWeights(finalGenerator, genWts);
 
-        RETURN combined_trained;
+        //Return the generator id to use generator to predict
+        RETURN generator_trained;
 END;        
 
-combined := GAN_train(trainX);
+generator := GAN_train(trainX);
 
-generated := GNNI.Predict(combined, train_noise);
+generated := GNNI.Predict(generator, train_noise);
 
 generated_data := Tensor.R4.GetData(generated);
 
