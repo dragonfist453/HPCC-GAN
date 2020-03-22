@@ -49,9 +49,8 @@ trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0);
 train_noise := Tensor.R4.MakeTensor([0,latentDim], random_data);
 
 
-//Function to be modified as the logic of GANs is incorrect below. Generator does not train which is bad
-//Other than that, this is ideal function which must be optimised to add to GNN module. It takes what is required and rest is to be taken care of inside the function.
-//Optimise further after basic completion and discussion with Roger. This will go awesome. Believe in yourself :")
+//Function's logic seems to be perfect after integration of transfer of weights and non-trainable layers. 
+//Must check for errors and correct them as mucn as possible. Please do work, I pray to gods for this ;_;
 
 //Please address later about how users can change the layers efficiently. VERY IMPORTANT.
 //Returns model ID to predict using the GAN
@@ -65,58 +64,69 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //Start session for GAN
         session := GNNI.GetSession();
 
-        //Functional model for generator and discriminator (unified)
-        //Functional model definition information
-        fldef := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
-                        {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
-                        {'g2','''layers.LeakyReLU(alpha=0.2)''',['g1']},                //Generator layer 2
-                        {'g3','''layers.BatchNormalization(momentum=0.8)''',['g2']},    //Generator layer 3
-                        {'g4','''layers.Dense(512)''',['g3']},                          //Generator layer 4
-                        {'g5','''layers.LeakyReLU(alpha=0.2)''',['g4']},                //Generator layer 5
-                        {'g6','''layers.BatchNormalization(momentum=0.8)''',['g5']},    //Generator layer 6
-                        {'g7','''layers.Dense(1024)''',['g6']},                         //Generator layer 7
-                        {'g8','''layers.LeakyReLU(alpha=0.2)''',['g7']},                //Generator layer 8
-                        {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9
-                        {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10
-                        {'img_out','''layers.Reshape((1,28,28,1))''',['g10']},                //Generate output
-                        {'img_in','''layers.Flatten(input_shape=(28,28,1))''',['img_out']}, //Input of Discriminator
-                        {'d1','''layers.Dense(512)''',['img_in']},   //Discriminator layer 1
-                        {'d2','''layers.LeakyReLU(alpha=0.2)''',['d1']},                //Discriminator layer 2
-                        {'d3','''layers.Dense(256)''',['d2']},                          //Discriminator layer 3
-                        {'d4','''layers.LeakyReLU(alpha=0.2)''',['d3']},                //Discriminator layer 4
-                        {'validity','''layers.Dense(1,activation='sigmoid')''',['d4']}],//Output of Discriminator, valid image or not
-                        FuncLayerDef);
+        
+        //GENERATOR
+        //Generator model definition information
+        ldef_generator := ['''layers.Input(shape=(100,))''',
+                        '''layers.Dense(256, input_dim=100)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',    
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Dense(512)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Dense(1024)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Dense(784,activation='tanh')''',
+                        '''layers.Reshape((28,28,1))'''];
+                    
+        compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
-        compiledef := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
+        //Define generator network
+        generator := GNNI.DefineModel(session, ldef_generator, compiledef_generator); //Generator model definition
+        gen_def := OUTPUT(generator, NAMED('generater_id'));
 
-        //Define generator functional network
-        generator := GNNI.DefineFuncModel(session, fldef, ['noise'],['img_out'],compiledef); //Generator model definition
-        generator_def := OUTPUT(generator, NAMED('generator_id'));
 
-        //Define discriminator functional network
-        discriminator := GNNI.DefineFuncModel(session, fldef, ['img_in'], ['validity'], compiledef); //Discriminator model definition
-        discriminator_def := OUTPUT(discriminator, NAMED('discriminator_id'));
+        //DISCRIMINATOR
+        //Discriminator model definition information
+        ldef_discriminator := ['''layers.Input(shape=(28,28,1))''',
+                                '''layers.Flatten(input_shape=(28,28,1))''',
+                                '''layers.Dense(512)''',
+                                '''layers.LeakyReLU(alpha=0.2)''',
+                                '''layers.Dense(256)''',
+                                '''layers.LeakyReLU(alpha=0.2)''',
+                                '''layers.Dense(1,activation='sigmoid')'''];
+
+        compiledef_discriminator := '''compile(loss='binary_crossentropy',
+                                        optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
+                                        metrics=['accuracy'])''';                       
+   
+        //Define discriminator network
+        discriminator := GNNI.DefineModel(session, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
+        dis_def := OUTPUT(discriminator, NAMED('discriminator_id'));
+
 
         //COMBINED functional model
         //Combined model definition information
-        fldef_combined := DATASET([{'noise','''layers.Dense(256, input_dim=100)''',[]},        //Generator layer 1 1
-        {'g1','''layers.LeakyReLU(alpha=0.2)''',['noise']},                //Generator layer 2 3
-        {'g2','''layers.BatchNormalization(momentum=0.8)''',['g1']},    //Generator layer 3 6
-        {'g3','''layers.Dense(512)''',['g2']},                          //Generator layer 4 7
-        {'g4','''layers.LeakyReLU(alpha=0.2)''',['g3']},                //Generator layer 5 9
-        {'g5','''layers.BatchNormalization(momentum=0.8)''',['g4']},    //Generator layer 6 12
-        {'g6','''layers.Dense(1024)''',['g5']},                         //Generator layer 7 13
-        {'g7','''layers.LeakyReLU(alpha=0.2)''',['g6']},                //Generator layer 8 15
-        {'g8','''layers.BatchNormalization(momentum=0.8)''',['g7']},    //Generator layer 9 18
-        {'g9','''layers.Dense(784,activation='tanh')''',['g8']},       //Generator layer 10 19
-        {'img','''layers.Reshape((1,28,28,1))''',['g10']},                //Generate output 20
-        {'d1','''layers.Flatten(input_shape=(28,28,1), trainable = False)''',['img']}, //Discriminator layer 1 21
-        {'d2','''layers.Dense(512, trainable = False)''',['d1']},   //Discriminator layer 2 22
-        {'d3','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d2']},                //Discriminator layer 3 23
-        {'d4','''layers.Dense(256, trainable = False)''',['d3']},                          //Discriminator layer 4 24
-        {'d5','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d4']},                //Discriminator layer 5 25
-        {'validity','''layers.Dense(1,activation='sigmoid', trainable = False)''',['d5']}],//Output of Discriminator, valid image or not 26
-        FuncLayerDef);
+        fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
+                                {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
+                                {'g2','''layers.LeakyReLU(alpha=0.2)''',['g1']},                //Generator layer 2
+                                {'g3','''layers.BatchNormalization(momentum=0.8)''',['g2']},    //Generator layer 3
+                                {'g4','''layers.Dense(512)''',['g3']},                          //Generator layer 4
+                                {'g5','''layers.LeakyReLU(alpha=0.2)''',['g4']},                //Generator layer 5
+                                {'g6','''layers.BatchNormalization(momentum=0.8)''',['g5']},    //Generator layer 6
+                                {'g7','''layers.Dense(1024)''',['g6']},                         //Generator layer 7
+                                {'g8','''layers.LeakyReLU(alpha=0.2)''',['g7']},                //Generator layer 8
+                                {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9
+                                {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10
+                                {'img','''layers.Reshape((28,28,1))''',['g10']},                //Generate output
+                                {'d1','''layers.Flatten(input_shape=(28,28,1),trainable = False)''',['img']}, //Discriminator layer 1
+                                {'d2','''layers.Dense(512,trainable = False)''',['d1']},   //Discriminator layer 2
+                                {'d3','''layers.LeakyReLU(alpha=0.2,trainable = False)''',['d2']},                //Discriminator layer 3
+                                {'d4','''layers.Dense(256,trainable = False)''',['d3']},                          //Discriminator layer 4
+                                {'d5','''layers.LeakyReLU(alpha=0.2,trainable = False)''',['d4']},                //Discriminator layer 5
+                                {'validity','''layers.Dense(1,activation='sigmoid',trainable = False)''',['d5']}],//Output of Discriminator, valid image or not
+                        FuncLayerDef);
 
         compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
         
@@ -134,10 +144,10 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         fake_data := DATASET(batchSize, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
                         SELF.value := 0));
-        fake := Tensor.R4.MakeTensor([0,1],fake_data);
+        fake := Tensor.R4.MakeTensor([0,batchSize],fake_data);   
 
-        //The required weights
-        wts := GNNI.GetWeights(discriminator);
+        //Get only initial combined weights
+        wts := GNNI.GetWeights(combined);             
 
         DATASET(t_Tensor) train(DATASET(t_Tensor) wts, UNSIGNED4 epochNum) := FUNCTION
                 //Random position in Tensor which is (batchSize) less than COUNT(input)
@@ -148,84 +158,77 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 
                 //Noise for generator to make fakes
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-                        SELF.indexes := [(COUNTER-1) DIV batchSize + 1, (COUNTER-1)%latentDim + 1],
+                        SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
                 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
                 loopDiscriminator := discriminator + epochNum;
                 loopCombined := combined + epochNum;
-                loopGenerator := combined + epochNum;
+                loopGenerator := generator + epochNum;
+
+                //Split weights accordingly. Generator layer <=20. Discriminator layers > 20. Discriminator must be subtracted by 20 to get its proper weights
+                genWts := SORT(wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                splitdisWts := SORT(wts(wi > (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
+                                        SELF.wi := LEFT.wi - 20,
+                                        SELF := LEFT
+                                        ));
 
                 //Setting new weights
-                discriminator1 := GNNI.SetWeights(loopDiscriminator, wts); 
-                generator1 := GNNI.SetWeights(loopGenerator, wts);
+                generator1 := GNNI.SetWeights(loopGenerator + 1, genWts);
+                discriminator1 := GNNI.SetWeights(loopDiscriminator + 1, disWts); 
 
                 //Fitting real data
-                discriminator2 := GNNI.Fit(discriminator1, X_dat, valid, batchSize, 1); //Some problem with weight dimensions. Check weight dimensions. How to output in ECL loop?
+                discriminator2 := GNNI.Fit(discriminator1 + 1, X_dat, valid, 1, batchSize);
 
                 //Predicting using Generator for fake images
-                gen_X_dat := GNNI.Predict(generator1, train_noise1);
-
-                //Project the correct shape onto tensor
-                gen_X_dat1 := PROJECT(gen_X_dat, TRANSFORM(t_Tensor,
-                        SELF.nodeId := LEFT.nodeId,
-                        SELF.wi := LEFT.wi,
-                        SELF.sliceid := LEFT.sliceid,
-                        SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-                        SELF.dataType := LEFT.dataType,
-                        SELF.maxSliceSize := LEFT.maxSliceSize,
-                        SELF.sliceSize := LEFT.sliceSize,
-                        SELF.denseData := LEFT.denseData,
-                        SELF.sparseData := LEFT.sparseData
-                        ));
+                gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
                 
                 //Fitting random data
-                discriminator3 := GNNI.Fit(discriminator2, gen_X_dat1, fake, batchSize, 1);
+                discriminator3 := GNNI.Fit(discriminator2 + 1, gen_X_dat1, fake, 1, batchSize);
 
                 //Noise for generator to make fakes
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-                        SELF.indexes := [(COUNTER-1) DIV batchSize + 1, (COUNTER-1)%latentDim + 1],
+                        SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
                 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 
-                //Take weights to set combined
-                disWts := GNNI.GetWeights(discriminator3);
+                //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
+                updateddisWts := GNNI.GetWeights(discriminator3);
+                newdisWts := PROJECT(updateddisWts, TRANSFORM(t_Tensor,
+                                        SELF.wi := LEFT.wi + 20,
+                                        SELF := LEFT
+                                        ));
+                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) 20) + wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                combined1 := GNNI.SetWeights(loopCombined, comWts);
 
-                //Set obtained weights to combined
-                combined1 := GNNI.SetWeights(loopCombined, disWts);
+                //Fit combined model
+                combined2 := GNNI.Fit(combined1, train_noise2, valid, 1, batchSize);
 
-                //Train generator using combined model
-                combined2 := GNNI.Fit(combined1, train_noise2, valid, batchSize, 1);
-
-                //Get new weights to return
+                //Get combined weights to return
                 newWts := GNNI.GetWeights(combined2);
-
-                //gen_loss := IF(EXISTS(newWts), GNNI.GetLoss(generator), 0);
-                //dis_loss := IF(EXISTS(newWts), GNNI.GetLoss(discriminator_fooled), 0);
                 
-                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum
-                //+' Generator loss : '+gen_loss+' Discriminator loss : '+dis_loss
-                );
+                //Logging progress when done
+                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum);
 
-                actions := ORDERED(discriminator1, combined1, discriminator2, discriminator3, combined2, logProgress);
+                //List of actions to do in order before log progress and returning weights
+                actions := ORDERED(discriminator1, discriminator2, generator1, discriminator3, combined1, combined2, logProgress);
 
                 RETURN WHEN(newWts, actions, BEFORE);
         END;        
 
+        //Call loop to train numEpochs times
         finalWts := LOOP(wts, ROUNDUP(numEpochs), train(ROWS(LEFT),COUNTER));
-        //finalWts := train(wts, 1);
 
         //Final model IDs
         finalGenerator := generator + numEpochs + 1;
 
-        //OUTPUT actions
-        //dis_out := OUTPUT(finalDiscriminator, NAMED('discriminator_id'));
-        //com_out := OUTPUT(finalCombined, NAMED('combined_id'));
-
         //Setting new weights
-        generator_trained := GNNI.SetWeights(finalGenerator, finalWts);
+        genWts := SORT(finalWts(wi<=20), wi, sliceid, LOCAL);
+        generator_trained := GNNI.SetWeights(finalGenerator, genWts);
 
+        //Return the generator id to use generator to predict
         RETURN generator_trained;
 END;        
 
