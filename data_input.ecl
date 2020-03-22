@@ -85,12 +85,12 @@ fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},       
 {'g9','''layers.BatchNormalization(momentum=0.8)''',['g8']},    //Generator layer 9 18
 {'g10','''layers.Dense(784,activation='tanh')''',['g9']},       //Generator layer 10 19
 {'img','''layers.Reshape((1,28,28,1))''',['g10']},                //Generate output 20
-{'d1','''layers.Flatten(input_shape=(28,28,1))''',['img']}, //Discriminator layer 1 21
-{'d2','''layers.Dense(512)''',['d1']},   //Discriminator layer 2 22
-{'d3','''layers.LeakyReLU(alpha=0.2)''',['d2']},                //Discriminator layer 3 23
-{'d4','''layers.Dense(256)''',['d3']},                          //Discriminator layer 4 24
-{'d5','''layers.LeakyReLU(alpha=0.2)''',['d4']},                //Discriminator layer 5 25
-{'validity','''layers.Dense(1,activation='sigmoid')''',['d5']}],//Output of Discriminator, valid image or not 26
+{'d1','''layers.Flatten(input_shape=(28,28,1), trainable = False)''',['img']}, //Discriminator layer 1 21
+{'d2','''layers.Dense(512, trainable = False)''',['d1']},   //Discriminator layer 2 22
+{'d3','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d2']},                //Discriminator layer 3 23
+{'d4','''layers.Dense(256, trainable = False)''',['d3']},                          //Discriminator layer 4 24
+{'d5','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d4']},                //Discriminator layer 5 25
+{'validity','''layers.Dense(1,activation='sigmoid', trainable = False)''',['d5']}],//Output of Discriminator, valid image or not 26
 FuncLayerDef);
 
 compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                 

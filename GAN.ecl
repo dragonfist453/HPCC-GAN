@@ -65,7 +65,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //Start session for GAN
         session := GNNI.GetSession();
 
-        //Functional model
+        //Functional model for generator and discriminator (unified)
         //Functional model definition information
         fldef := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
                         {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
@@ -96,9 +96,32 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //Define discriminator functional network
         discriminator := GNNI.DefineFuncModel(session, fldef, ['img_in'], ['validity'], compiledef); //Discriminator model definition
         discriminator_def := OUTPUT(discriminator, NAMED('discriminator_id'));
+
+        //COMBINED functional model
+        //Combined model definition information
+        fldef_combined := DATASET([{'noise','''layers.Dense(256, input_dim=100)''',[]},        //Generator layer 1 1
+        {'g1','''layers.LeakyReLU(alpha=0.2)''',['noise']},                //Generator layer 2 3
+        {'g2','''layers.BatchNormalization(momentum=0.8)''',['g1']},    //Generator layer 3 6
+        {'g3','''layers.Dense(512)''',['g2']},                          //Generator layer 4 7
+        {'g4','''layers.LeakyReLU(alpha=0.2)''',['g3']},                //Generator layer 5 9
+        {'g5','''layers.BatchNormalization(momentum=0.8)''',['g4']},    //Generator layer 6 12
+        {'g6','''layers.Dense(1024)''',['g5']},                         //Generator layer 7 13
+        {'g7','''layers.LeakyReLU(alpha=0.2)''',['g6']},                //Generator layer 8 15
+        {'g8','''layers.BatchNormalization(momentum=0.8)''',['g7']},    //Generator layer 9 18
+        {'g9','''layers.Dense(784,activation='tanh')''',['g8']},       //Generator layer 10 19
+        {'img','''layers.Reshape((1,28,28,1))''',['g10']},                //Generate output 20
+        {'d1','''layers.Flatten(input_shape=(28,28,1), trainable = False)''',['img']}, //Discriminator layer 1 21
+        {'d2','''layers.Dense(512, trainable = False)''',['d1']},   //Discriminator layer 2 22
+        {'d3','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d2']},                //Discriminator layer 3 23
+        {'d4','''layers.Dense(256, trainable = False)''',['d3']},                          //Discriminator layer 4 24
+        {'d5','''layers.LeakyReLU(alpha=0.2, trainable = False)''',['d4']},                //Discriminator layer 5 25
+        {'validity','''layers.Dense(1,activation='sigmoid', trainable = False)''',['d5']}],//Output of Discriminator, valid image or not 26
+        FuncLayerDef);
+
+        compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
         
         //Define combined functional network
-        combined := GNNI.DefineFuncModel(session, fldef, ['noise'], ['validity'], compiledef);
+        combined := GNNI.DefineFuncModel(session, fldef_combined, ['noise'], ['validity'], compiledef_combined);
         combined_def := OUTPUT(combined, NAMED('combined_id'));
 
         //Dataset of 1s for classification
@@ -176,10 +199,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 combined2 := GNNI.Fit(combined1, train_noise2, valid, batchSize, 1);
 
                 //Get new weights to return
-                comWts := GNNI.GetWeights(combined2);
-
-                //Ignores the Discriminator part of combined fit and puts back old weights from discriminator. (Hopes to simulate discriminator.trainable = False)
-                newWts := SORT(comWts(wi <= 20) + disWts(wi > 20), wi, sliceId, LOCAL);
+                newWts := GNNI.GetWeights(combined2);
 
                 //gen_loss := IF(EXISTS(newWts), GNNI.GetLoss(generator), 0);
                 //dis_loss := IF(EXISTS(newWts), GNNI.GetLoss(discriminator_fooled), 0);

@@ -40,9 +40,8 @@ trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], choosen(trainX0,1000));
 
 //COMBINED functional model
 //Combined model definition information
-fldef_combined := DATASET([{'noise','''layers.Input(shape=(100,))''',[]},              //Input of Generator
-                {'g1','''layers.Dense(256, input_dim=100)''',['noise']},        //Generator layer 1
-                {'g2','''layers.LeakyReLU(alpha=0.2)''',['g1']},                //Generator layer 2
+fldef_combined := DATASET([{'noise','''layers.Dense(256, input_dim=100)''',[]},        //Generator layer 1
+                {'g2','''layers.LeakyReLU(alpha=0.2)''',['noise']},                //Generator layer 2
                 {'g3','''layers.BatchNormalization(momentum=0.8)''',['g2']},    //Generator layer 3
                 {'g4','''layers.Dense(512)''',['g3']},                          //Generator layer 4
                 {'g5','''layers.LeakyReLU(alpha=0.2)''',['g4']},                //Generator layer 5
