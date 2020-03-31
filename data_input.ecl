@@ -1,4 +1,4 @@
-/*
+﻿/*
 Basically a dump file for extra codes which could be used and also for testing out stuff along with test.ecl
 */
 IMPORT Python3 as Python;
@@ -166,7 +166,13 @@ diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
 OUTPUT(disWts, NAMED('project_dis'));
 OUTPUT(genWts, NAMED('project_gen'));
 
-//OUTPUT(GNNI.GetWeights(discriminator), NAMED('weird'));
+OUTPUT(GNNI.GetWeights(discriminator), NAMED('weird'));
+
+
+combined1 := GNNI.SetWeights(combined, wts);
+OUTPUT(combined1, NAMED('new_comid'));
+tens3 := GNNI.GetWeights(combined1);
+OUTPUT(tens3, NAMED('com_out'));
 
 discriminator1 := GNNI.SetWeights(discriminator, disWts);
 OUTPUT(discriminator1, NAMED('new_disid'));
@@ -177,11 +183,6 @@ generator1 := GNNI.SetWeights(generator, genWts);
 OUTPUT(generator1, NAMED('new_genid'));
 tens2 := GNNI.GetWeights(generator1);
 OUTPUT(tens2, NAMED('gen_out'));
-
-combined1 := GNNI.SetWeights(combined, wts);
-OUTPUT(combined1, NAMED('new_comid'));
-tens3 := GNNI.GetWeights(combined1);
-OUTPUT(tens3, NAMED('com_out'));
 
 //tensum := int.TensExtract(trainX, 3, 100);
 
