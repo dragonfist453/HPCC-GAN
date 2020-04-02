@@ -29,7 +29,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
-batchSize := 100;
+//batchSize := 32;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -80,7 +80,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.Dense(784,activation='tanh')''',
                         '''layers.Reshape((1,28,28,1))'''];
                     
-        compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
+        compiledef_generator := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
         //Define generator network
         generator := GNNI.DefineModel(session, ldef_generator, compiledef_generator); //Generator model definition
@@ -97,7 +97,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                                 '''layers.LeakyReLU(alpha=0.2)''',
                                 '''layers.Dense(1,activation='sigmoid')'''];
 
-        compiledef_discriminator := '''compile(loss='binary_crossentropy',
+        compiledef_discriminator := '''compile(loss=tf.keras.losses.binary_crossentropy,
                                         optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
                                         metrics=['accuracy'])''';                       
    
@@ -153,7 +153,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 batchPos := RANDOM()%(recordCount - batchSize);
                 
                 //Extract (batchSize) tensors starting from a random batchPos from the tensor input. Now we have a random input images of (batchSize) rows.
-                X_dat := int.TensExtract(input, batchPos, 100);
+                X_dat := int.TensExtract(input, batchPos, batchSize);
 
                 //Noise for generator to make fakes
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
@@ -224,10 +224,10 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 newWts := GNNI.GetWeights(combined2);
                 
                 //Logging progress when done
-                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum);
+                logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum+' D loss : '+GNNI.GetLoss(discriminator3)+' G loss : '+GNNI.GetLoss(combined2));
 
                 //List of actions to do in order before log progress and returning weights
-                actions := ORDERED(discriminator1, discriminator2, generator1, discriminator3, combined1, combined2, logProgress);
+                //actions := ORDERED(generator1, discriminator1, discriminator2, discriminator3, combined1, combined2, logProgress);
 
                 RETURN WHEN(newWts, logProgress);
         END;        
@@ -247,7 +247,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,100,1);
+generator := GAN_train(trainX,32,1);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
