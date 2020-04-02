@@ -185,9 +185,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 				
                 //Merging real and generated                
                 max_workitem_X := MAX(X_dat, wi);
+                max_sliceid_X := MAX(X_dat, sliceid);
+                max_slicesize := MAX(X_dat, maxslicesize);
                 generated := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
                                         SELF.wi := LEFT.wi + max_workitem_X,
                                         SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                                        SELF.sliceid := max_sliceid_X + COUNTER,
+                                        SELF.maxslicesize := max_slicesize,
                                         SELF := LEFT
                                         ));                         
                 X_train := X_dat + generated;                                                                       
@@ -246,7 +250,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,100,15000);
+generator := GAN_train(trainX,100,1);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);

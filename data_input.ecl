@@ -34,7 +34,7 @@ batchSize := 100;
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(CHOOSEN(mnist_train_images,5), imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(CHOOSEN(mnist_train_images,250), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 ));
 
@@ -107,28 +107,49 @@ combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined 
 //OUTPUT(combined, NAMED('combined_id'));
 
 //Noise for generator to make fakes
-random_data1 := DATASET(latentDim*5, TRANSFORM(TensData,
+random_data1 := DATASET(latentDim*100, TRANSFORM(TensData,
         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
 noise := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
 //Dataset of 1s for classification
-valid_data := DATASET(1, TRANSFORM(TensData,
+valid_data := DATASET(100, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
                 SELF.value := 1));
 valid := Tensor.R4.MakeTensor([0,1],valid_data);
 
+fake_data := DATASET(100, TRANSFORM(TensData,
+                SELF.indexes := [COUNTER, 1],
+                SELF.value := 0));
+fake := Tensor.R4.MakeTensor([0,1],fake_data);
+
 gen_data := GNNI.Predict(generator, noise);
 
-max_workitem := MAX(trainX, wi);
+X_dat := int.TensExtract(trainX, 123, 100);
+max_workitem := MAX(X_dat, wi);
+max_sliceid := MAX(X_dat, sliceid);
+max_slicesize := MAX(X_dat, maxslicesize);
 gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
-                            SELF.wi := LEFT.wi + max_workitem,
+                            SELF.wi := max_workitem,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF.sliceid := max_sliceid + COUNTER,
+                            SELF.maxslicesize := max_slicesize,
                             SELF := LEFT
                             ));                         
 
-output_data := trainX + gen_imgs;
+output_data := X_dat + gen_imgs;
 OUTPUT(output_data);
+
+max_wi := MAX(valid, wi);
+max_sid := MAX(valid, wi);
+new_fake := PROJECT(fake, TRANSFORM(t_Tensor,
+                            SELF.wi := max_wi,
+                            SELF.sliceid := max_sid + COUNTER,
+                            SELF := LEFT
+                            ));
+output_comb := valid + new_fake;
+OUTPUT(output_comb);
+
 
 //discriminator1 := GNNI.Fit(discriminator, trainX, valid);
 /*
