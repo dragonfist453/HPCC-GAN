@@ -42,7 +42,7 @@ trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
 //Random set of normal data
 random_data := DATASET(latentDim, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                      
 //Builds tensors for the neural network
 trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
@@ -120,11 +120,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.BatchNormalization(momentum=0.8)''',  //18
                         '''layers.Dense(784,activation='tanh')''',  //19
                         '''layers.Reshape((1,28,28,1))''', //20
-                        '''layers.Flatten(input_shape=(28,28,1))''',//1
+                        '''layers.Flatten(input_shape=(28,28,1), trainable=False)''',//1
                         '''layers.Dense(512,trainable=False)''',//2
-                        '''layers.LeakyReLU(alpha=0.2,)''',//3
+                        '''layers.LeakyReLU(alpha=0.2,trainable=False)''',//3
                         '''layers.Dense(256,trainable=False)''',//4
-                        '''layers.LeakyReLU(alpha=0.2)''',//5
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//5
                         '''layers.Dense(1,activation='sigmoid',trainable=False)'''];//6
 
         compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
@@ -158,7 +158,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Noise for generator to make fakes
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
@@ -174,38 +174,38 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                                         SELF := LEFT
                                         ));
 
-                //Setting discriminator weights
-                discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
-
-                //Fitting real data
-                discriminator2 := GNNI.Fit(discriminator1, X_dat, valid, batchSize, 1);
-
                 //Setting generator weights
                 generator1 := GNNI.SetWeights(loopGenerator, genWts);
 
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 				
-				//Transform generator output dimensions from [28,28,1] to [0,28,28,1]
-				gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-								SELF.nodeId := LEFT.nodeId,
-								SELF.wi := LEFT.wi,
-								SELF.sliceid := LEFT.sliceid,
-								SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-								SELF.dataType := LEFT.dataType,
-								SELF.maxslicesize := LEFT.maxslicesize,
-								SELF.slicesize := LEFT.slicesize,
-								SELF.denseData := LEFT.denseData,
-								SELF.sparseData := LEFT.sparseData
-								)); 
-                
+                //Transform generator output dimensions from [1,28,28,1] to [0,28,28,1]
+                gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
+                                                SELF.nodeId := LEFT.nodeId,
+                                                SELF.wi := LEFT.wi,
+                                                SELF.sliceid := LEFT.sliceid,
+                                                SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                                                SELF.dataType := LEFT.dataType,
+                                                SELF.maxslicesize := LEFT.maxslicesize,
+                                                SELF.slicesize := LEFT.slicesize,
+                                                SELF.denseData := LEFT.denseData,
+                                                SELF.sparseData := LEFT.sparseData
+                                                )); 
+
+                //Get discriminator by setting weights
+                discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts);                                
+
+                //Fitting real image data
+                discriminator2 := GNNI.Fit(discriminator1, X_dat, valid, batchSize, 1);
+
                 //Fitting random data
                 discriminator3 := GNNI.Fit(discriminator2, gen_imgs, fake, batchSize, 1);
 
                 //Noise for generator to make fakes
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 
                 //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
@@ -229,7 +229,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //List of actions to do in order before log progress and returning weights
                 actions := ORDERED(discriminator1, discriminator2, generator1, discriminator3, combined1, combined2, logProgress);
 
-                RETURN WHEN(newWts, actions, BEFORE);
+                RETURN WHEN(newWts, logProgress);
         END;        
 
         //Call loop to train numEpochs times
@@ -247,7 +247,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,100,15000);
+generator := GAN_train(trainX,100,1);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
