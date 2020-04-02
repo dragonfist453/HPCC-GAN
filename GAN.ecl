@@ -182,15 +182,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 				
                 //Transform generator output dimensions from [1,28,28,1] to [0,28,28,1]
                 gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                                                SELF.nodeId := LEFT.nodeId,
-                                                SELF.wi := LEFT.wi,
-                                                SELF.sliceid := LEFT.sliceid,
                                                 SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-                                                SELF.dataType := LEFT.dataType,
-                                                SELF.maxslicesize := LEFT.maxslicesize,
-                                                SELF.slicesize := LEFT.slicesize,
-                                                SELF.denseData := LEFT.denseData,
-                                                SELF.sparseData := LEFT.sparseData
+                                                SELF := LEFT
                                                 )); 
 
                 //Get discriminator by setting weights

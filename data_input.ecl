@@ -71,6 +71,20 @@ compiledef_discriminator := '''compile(loss='binary_crossentropy',
                                 optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
                                 metrics=['accuracy'])''';      
 
+//DISCRIMINATOR EXTRA
+//Discriminator model definition information
+ldef_discriminator_extra := ['''layers.Input(shape=(28,28,1))''',
+                        '''layers.Flatten(input_shape=(28,28,1))''',//1
+                        '''layers.Dense(512)''',//2
+                        '''layers.LeakyReLU(alpha=0.2)''',//3
+                        '''layers.Dense(256)''',//4
+                        '''layers.LeakyReLU(alpha=0.2)''',//5
+                        '''layers.Dense(1,activation='sigmoid')'''];//6
+
+compiledef_discriminator_extra := '''compile(loss='binary_crossentropy',
+                                optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
+                                metrics=['accuracy'])''';      
+
 //COMBINED
 //Combined model definition information
 ldef_combined := ['''layers.Input(shape=(100,))''', 
@@ -98,13 +112,16 @@ compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, opti
 s := GNNI.GetSession();
 
 generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Generator model definition
-//OUTPUT(generator, NAMED('generator_id'));
+OUTPUT(generator, NAMED('generator_id'));
 
 discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
-//OUTPUT(discriminator, NAMED('discriminator_id'));
+OUTPUT(discriminator, NAMED('discriminator_id'));
 
 combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined model definition
-//OUTPUT(combined, NAMED('combined_id'));
+OUTPUT(combined, NAMED('combined_id'));
+
+//discriminator_extra := GNNI.DefineModel(s, ldef_discriminator_extra, compiledef_discriminator_extra); //Discriminator model definition
+//OUTPUT(discriminator_extra, NAMED('discriminator_extra_id'));
 
 //Noise for generator to make fakes
 random_data1 := DATASET(latentDim*5, TRANSFORM(TensData,
@@ -193,5 +210,5 @@ OUTPUT(tens2, NAMED('gen_out'));
 
 //OUTPUT(tensum); 
 */
-result := valid+fake;
-OUTPUT(result);
+//result := valid+fake;
+//OUTPUT(result);
