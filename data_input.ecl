@@ -34,7 +34,7 @@ batchSize := 100;
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(CHOOSEN(mnist_train_images,5), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 ));
 
@@ -98,13 +98,13 @@ compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, opti
 s := GNNI.GetSession();
 
 generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Generator model definition
-OUTPUT(generator, NAMED('generator_id'));
+//OUTPUT(generator, NAMED('generator_id'));
 
 discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
-OUTPUT(discriminator, NAMED('discriminator_id'));
+//OUTPUT(discriminator, NAMED('discriminator_id'));
 
 combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined model definition
-OUTPUT(combined, NAMED('combined_id'));
+//OUTPUT(combined, NAMED('combined_id'));
 
 //Noise for generator to make fakes
 random_data1 := DATASET(latentDim*5, TRANSFORM(TensData,
@@ -117,6 +117,18 @@ valid_data := DATASET(1, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
                 SELF.value := 1));
 valid := Tensor.R4.MakeTensor([0,1],valid_data);
+
+gen_data := GNNI.Predict(generator, noise);
+
+max_workitem := MAX(trainX, wi);
+gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
+                            SELF.wi := LEFT.wi + max_workitem,
+                            SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF := LEFT
+                            ));                         
+
+output_data := trainX + gen_imgs;
+OUTPUT(output_data);
 
 //discriminator1 := GNNI.Fit(discriminator, trainX, valid);
 /*
@@ -153,7 +165,7 @@ OUT_D := OUTPUT(gen_data, NAMED('diss'));
 OUT_C := OUTPUT(gen_data2, NAMED('comb'));
 
 SEQUENTIAL(OUT_G,OUT_D,OUT_C);
-*/
+
 wts := GNNI.GetWeights(combined);
 
 genWts := wts(wi <= 20);
@@ -187,3 +199,4 @@ OUTPUT(tens2, NAMED('gen_out'));
 //tensum := int.TensExtract(trainX, 3, 100);
 
 //OUTPUT(tensum); 
+*/
