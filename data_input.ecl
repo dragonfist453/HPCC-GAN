@@ -126,28 +126,24 @@ fake := Tensor.R4.MakeTensor([0,1],fake_data);
 gen_data := GNNI.Predict(generator, noise);
 
 X_dat := int.TensExtract(trainX, 123, 100);
-max_workitem := MAX(X_dat, wi);
-max_sliceid := MAX(X_dat, sliceid);
-max_slicesize := MAX(X_dat, maxslicesize);
+/*
 gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
-                            SELF.wi := max_workitem,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-                            SELF.sliceid := max_sliceid + COUNTER,
-                            SELF.maxslicesize := max_slicesize,
                             SELF := LEFT
-                            ));                         
-
-output_data := X_dat + gen_imgs;
+                            ));         */             
+gen_out := Tensor.R4.AlignTensors(gen_data);
+output_data := X_dat + gen_out;
 OUTPUT(output_data);
-
+/*
 max_wi := MAX(valid, wi);
 max_sid := MAX(valid, wi);
 new_fake := PROJECT(fake, TRANSFORM(t_Tensor,
                             SELF.wi := max_wi,
                             SELF.sliceid := max_sid + COUNTER,
                             SELF := LEFT
-                            ));
-output_comb := valid + new_fake;
+                            )); */
+whatever := valid + fake;
+output_comb := Tensor.R4.AlignTensors(whatever);
 OUTPUT(output_comb);
 
 

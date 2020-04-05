@@ -146,7 +146,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
         //Merging valid and fake
-        Y_train := Tensor.R4.MakeTensor([0,1], valid_data+fake_data);      
+        mixed := valid + fake;
+        Y_train := Tensor.R4.AlignTensors(mixed);  
 
         //Get only initial combined weights
         wts := GNNI.GetWeights(combined);             
@@ -182,19 +183,20 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
-				
+
+                /*		
                 //Merging real and generated                
                 max_workitem_X := MAX(X_dat, wi);
                 max_sliceid_X := MAX(X_dat, sliceid);
-                max_slicesize := MAX(X_dat, maxslicesize);
+                max_slicesize := MAX(X_dat, maxslicesize); */
                 generated := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                                        SELF.wi := LEFT.wi + max_workitem_X,
                                         SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-                                        SELF.sliceid := max_sliceid_X + COUNTER,
-                                        SELF.maxslicesize := max_slicesize,
                                         SELF := LEFT
                                         ));                         
-                X_train := X_dat + generated;                                                                       
+                //X_train := X_dat + generated;  
+                
+                gen_out := Tensor.R4.AlignTensors(generated);
+                X_train := Tensor.R4.AlignTensors(X_dat + gen_out);                                                                     
 
                 //Setting discriminator weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
