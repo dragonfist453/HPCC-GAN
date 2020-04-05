@@ -126,14 +126,31 @@ fake := Tensor.R4.MakeTensor([0,1],fake_data);
 gen_data := GNNI.Predict(generator, noise);
 
 X_dat := int.TensExtract(trainX, 123, 100);
-/*
+
 gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF.wi := 1,
                             SELF := LEFT
-                            ));         */             
-gen_out := Tensor.R4.AlignTensors(gen_data);
-output_data := X_dat + gen_out;
-OUTPUT(output_data);
+                            ));       
+
+gen_out := Tensor.R4.GetData(gen_imgs);
+
+imagerows := MAX(gen_out, indexes[2]); 
+imagecols := MAX(gen_out, indexes[3]);
+imagechannels := MAX(gen_out, indexes[4]);
+
+dim := imagerows*imagecols*imagechannels;
+
+toTensor := PROJECT(gen_out, TRANSFORM(TensData,
+                            SELF.indexes := [COUNTER DIV (dim+1) + 1,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
+                            SELF := LEFT
+                            ));
+
+toNN := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],toTensor);                          
+OUTPUT(toNN);
+//gen_out := Tensor.R4.AlignTensors(gen_data);
+//output_data := X_dat + gen_out;
+//OUTPUT(output_data);
 /*
 max_wi := MAX(valid, wi);
 max_sid := MAX(valid, wi);
@@ -144,7 +161,7 @@ new_fake := PROJECT(fake, TRANSFORM(t_Tensor,
                             )); */
 whatever := valid + fake;
 output_comb := Tensor.R4.AlignTensors(whatever);
-OUTPUT(output_comb);
+//OUTPUT(output_comb);
 
 
 //discriminator1 := GNNI.Fit(discriminator, trainX, valid);
