@@ -146,8 +146,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
         //Merging valid and fake
-        mixed := valid + fake;
-        Y_train := Tensor.R4.AlignTensors(mixed);  
+        mixed := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
+                                        SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2], LEFT.indexes[3], LEFT.indexes[4]],
+                                        SELF := LEFT
+                                ));
+        Y_train := Tensor.R4.MakeTensor([0,1], mixed);
 
         //Get only initial combined weights
         wts := GNNI.GetWeights(combined);             
@@ -189,14 +192,30 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 max_workitem_X := MAX(X_dat, wi);
                 max_sliceid_X := MAX(X_dat, sliceid);
                 max_slicesize := MAX(X_dat, maxslicesize); */
-                generated := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                                        SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
+                            SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF.wi := 1,
+                            SELF := LEFT
+                            ));       
+                        
+                gen_out := Tensor.R4.GetData(gen_imgs);
+
+                imagerows := MAX(gen_out, indexes[2]); 
+                imagecols := MAX(gen_out, indexes[3]);
+                imagechannels := MAX(gen_out, indexes[4]);
+
+                dim := imagerows*imagecols*imagechannels;
+
+                toTensor := PROJECT(gen_out, TRANSFORM(TensData,
+                                        SELF.indexes := [COUNTER DIV (dim+1) + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
                                         SELF := LEFT
-                                        ));                         
-                //X_train := X_dat + generated;  
-                
-                gen_out := Tensor.R4.AlignTensors(generated);
-                X_train := Tensor.R4.AlignTensors(X_dat + gen_out);                                                                     
+                                        ));
+
+                X_imgs := Tensor.R4.GetData(X_dat);
+
+                toNN := X_imgs + toTensor;                        
+
+                X_train := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],toNN);                      
 
                 //Setting discriminator weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
