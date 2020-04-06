@@ -120,11 +120,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.BatchNormalization(momentum=0.8)''',  //18
                         '''layers.Dense(784,activation='tanh')''',  //19
                         '''layers.Reshape((1,28,28,1))''', //20
-                        '''layers.Flatten(input_shape=(28,28,1))''',//1
+                        '''layers.Flatten(input_shape=(28,28,1), trainable=False)''',//1
                         '''layers.Dense(512,trainable=False)''',//2
-                        '''layers.LeakyReLU(alpha=0.2,)''',//3
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//3
                         '''layers.Dense(256,trainable=False)''',//4
-                        '''layers.LeakyReLU(alpha=0.2)''',//5
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//5
                         '''layers.Dense(1,activation='sigmoid',trainable=False)'''];//6
 
         compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
@@ -147,7 +147,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 
         //Merging valid and fake
         mixed := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
-                                        SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2], LEFT.indexes[3], LEFT.indexes[4]],
+                                        SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
                                         SELF := LEFT
                                 ));
         Y_train := Tensor.R4.MakeTensor([0,1], mixed);
@@ -187,11 +187,6 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
-                /*		
-                //Merging real and generated                
-                max_workitem_X := MAX(X_dat, wi);
-                max_sliceid_X := MAX(X_dat, sliceid);
-                max_slicesize := MAX(X_dat, maxslicesize); */
                 gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
                             SELF.wi := 1,
@@ -220,11 +215,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Setting discriminator weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
 
-                //Fitting real data
+                //Fitting real and random data
                 discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize, 1);
-                
-                //Fitting random data
-                //discriminator3 := GNNI.Fit(discriminator2, gen_imgs, fake, batchSize, 1);
 
                 //Noise for generator to make fakes
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
@@ -271,7 +263,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,100,1);
+generator := GAN_train(trainX,100,10);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
