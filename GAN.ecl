@@ -29,7 +29,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
-batchSize := 100;
+batchSize := 128;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -50,7 +50,6 @@ train_noise := Tensor.R4.MakeTensor([0,latentDim], random_data);
 
 
 //Function's logic seems to be perfect after integration of transfer of weights and non-trainable layers. 
-//Get and Set weights which is the crux of my algorithm fails. Needs debugging.
 
 //Please address later about how users can change the layers efficiently. VERY IMPORTANT.
 //Returns model ID to predict using the GAN
@@ -146,11 +145,10 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
         //Merging valid and fake
-        mixed := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
-                                        SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
-                                        SELF := LEFT
-                                ));
-        Y_train := Tensor.R4.MakeTensor([0,1], mixed);
+        Y_train := valid + PROJECT(fake, TRANSFORM(t_Tensor,
+                        SELF.sliceid := MAX(valid, sliceid) + 1,
+                        SELF := LEFT        
+                        ));
 
         //Get only initial combined weights
         wts := GNNI.GetWeights(combined);             
@@ -216,7 +214,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
 
                 //Fitting real and random data
-                discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize, 1);
+                discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize*2, 1);
 
                 //Noise for generator to make fakes
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
@@ -263,7 +261,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,100,10);
+generator := GAN_train(trainX,batchSize,100);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);

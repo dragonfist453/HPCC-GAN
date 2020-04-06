@@ -123,13 +123,19 @@ fake_data := DATASET(100, TRANSFORM(TensData,
                 SELF.value := 0));
 fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
+interesting := valid + PROJECT(fake, TRANSFORM(t_Tensor,
+                SELF.sliceid := 2,
+                SELF := LEFT));
+OUTPUT(interesting);                
+
 something := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
                                 SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
                                 SELF := LEFT
                                 ));
 tensorboi := Tensor.R4.MakeTensor([0,1], something);
-OUTPUT(something);
-OUTPUT(tensorboi);
+//OUTPUT(something);
+//OUTPUT(tensorboi);
+//OUTPUT(Tensor.R4.GetRecordCount(tensorboi));
 
 gen_data := GNNI.Predict(generator, noise);
 
@@ -141,9 +147,6 @@ gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
                             SELF.wi := 1,
                             SELF := LEFT
                             ));   
-
-generator_metrics := GNNI.EvaluateMod(generator, noise, X_dat);
-OUTPUT(generator_metrics);
 
 gen_out := Tensor.R4.GetData(gen_imgs);
 
