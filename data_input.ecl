@@ -129,6 +129,34 @@ random_data1 := DATASET(latentDim*5, TRANSFORM(TensData,
         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
 noise := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
+//Predict an image from noise
+generated := GNNI.Predict(generator, noise);
+
+//Transform generator output dimensions from [1,28,28,1] to [0,28,28,1]
+gen_data := PROJECT(generated, TRANSFORM(t_Tensor,
+                        SELF.wi := 1,
+                        SELF := LEFT
+                        ));
+
+//Get images output
+generated_data := Tensor.R4.GetData(gen_data);
+
+//Project to get indexes right
+output_data := PROJECT(generated_data, TRANSFORM(TensData,
+                        SELF.indexes := [(COUNTER-1)/784 + 1, LEFT.indexes[2], LEFT.indexes[3], LEFT.indexes[4]],
+                        SELF := LEFT
+                        ));
+
+OUTPUT(output_data, ,'~GAN::output_tensdata', OVERWRITE);
+
+//Convert from tensor data to images
+outputImage := IMG.TenstoImg(output_data);
+
+//Convert image data to jpg format to despray
+mnistjpg := IMG.OutputasPNG(outputImage);
+
+OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+
 //Dataset of 1s for classification
 valid_data := DATASET(batchSize, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
