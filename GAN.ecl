@@ -29,7 +29,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
-batchSize := 128;
+batchSize := 100;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -144,11 +144,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         SELF.value := 0));
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
-        //Merging valid and fake
-        Y_train := valid + PROJECT(fake, TRANSFORM(t_Tensor,
-                        SELF.sliceid := MAX(valid, sliceid) + 1,
-                        SELF := LEFT        
-                        ));
+        //Mixed dataset of above two
+        mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER,1],
+                        SELF.value := IF(COUNTER <= batchSize,1,0);
+        ));
+        mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
+        Y_train := mixed;
 
         //Get only initial combined weights
         wts := GNNI.GetWeights(combined);             

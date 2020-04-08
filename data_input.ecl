@@ -123,10 +123,13 @@ fake_data := DATASET(100, TRANSFORM(TensData,
                 SELF.value := 0));
 fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
-interesting := valid + PROJECT(fake, TRANSFORM(t_Tensor,
-                SELF.sliceid := 2,
-                SELF := LEFT));
-OUTPUT(interesting);                
+mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER,1],
+                        SELF.value := IF(COUNTER <= batchSize,1,0);
+                    ));
+mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
+x := mixed;
+OUTPUT(x);
 
 something := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
                                 SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
