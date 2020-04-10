@@ -29,7 +29,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols * imgChannels;
 latentDim := 100;
 batchSize := 32;
-numEpochs := 1;
+numEpochs := 1000;
 sampleImages := 25;
 
 //Take MNIST dataset using IMG module
@@ -140,7 +140,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //Dataset of 0s for classification
         fake_data := DATASET(batchSize, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
-                        SELF.value := 0));
+                        SELF.value := 0.00000001));
         fake := Tensor.R4.MakeTensor([0,1],fake_data);   
 
         //Get only initial combined weights
