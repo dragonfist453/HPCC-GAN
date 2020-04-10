@@ -138,17 +138,18 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         SELF.value := 1));
         valid := Tensor.R4.MakeTensor([0,1],valid_data);
 
+        //Kindly note: 0.00000001 was used instead of 0 as 0 wasn't read as a tensor data in the backend. It fits fine even in python, so it's used.
         //Dataset of 0s for classification
         fake_data := DATASET(batchSize, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
-                        SELF.value := 0));
+                        SELF.value := 0.00000001));
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
         //Mixed dataset of above two
-        mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
-                        SELF.indexes := [COUNTER,1],
-                        SELF.value := IF(COUNTER <= batchSize,1,0);
-        ));
+        mixed_data := DATASET((batchSize*2), TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER, 1],
+                        SELF.value := IF(COUNTER <= batchSize,1,0.00000001)
+                        ));
         mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
         Y_train := mixed;
 
@@ -190,6 +191,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
                             SELF.wi := 1,
+                            SELF.sliceid := COUNTER,
                             SELF := LEFT
                             ));       
                         
@@ -202,7 +204,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 dim := imagerows*imagecols*imagechannels;
 
                 toTensor := PROJECT(gen_out, TRANSFORM(TensData,
-                                        SELF.indexes := [COUNTER DIV (dim+1) + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
+                                        SELF.indexes := [(COUNTER-1) DIV dim + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
                                         SELF := LEFT
                                         ));
 
@@ -263,7 +265,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize,100);
+generator := GAN_train(trainX,batchSize,1000);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
@@ -274,6 +276,6 @@ OUTPUT(generated_data, ,'~GAN::output_tensdata', OVERWRITE);
 outputImage := IMG.TenstoImg(generated_data);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputMNIST(outputImage);
+mnistjpg := IMG.OutputasPNG(outputImage);
 
 OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
