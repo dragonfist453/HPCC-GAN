@@ -10,7 +10,7 @@ IMPORT GNN.Internal as int;
 TensData := Tensor.R4.TensData;
 t_Tensor := Tensor.R4.t_Tensor;
 FuncLayerDef := Types.FuncLayerDef;
-RAND_MAX := POWER(2,32) - 1;
+RAND_MAX := POWER(2,16) - 1;
 #option('outputLimit',2000);
 
 //Format of the image
@@ -42,30 +42,44 @@ trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0);
 
 //GENERATOR
 //Generator model definition information
-ldef_generator := ['''layers.Input(shape=(100,))''', 
-                '''layers.Dense(256, input_dim=100)''',//1
-                '''layers.LeakyReLU(alpha=0.2)''',    //3
-                '''layers.BatchNormalization(momentum=0.8)''',//6
-                '''layers.Dense(512)''',    //7
-                '''layers.LeakyReLU(alpha=0.2)''',  //9
-                '''layers.BatchNormalization(momentum=0.8)''',  //12
-                '''layers.Dense(1024)''',   //13
-                '''layers.LeakyReLU(alpha=0.2)''',  //15
-                '''layers.BatchNormalization(momentum=0.8)''',  //18
-                '''layers.Dense(784,activation='tanh')''',  //19
-                '''layers.Reshape((1,28,28,1))''']; //20
+ldef_generator := ['''layers.Input(shape=(100,))''',
+                        '''layers.Dense(128 * 7 * 7, activation="relu", input_dim=100)''',
+                        '''layers.Reshape((7, 7, 128))''',    
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(128, kernel_size=3, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Activation("relu")''',
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(64, kernel_size=3, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Activation("relu")''',
+                        '''layers.Conv2D(1, kernel_size=3, padding="same")''',
+                        '''layers.Activation("tanh")''',
+                        '''layers.Reshape((1,28,28,1))'''];
             
 compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
 //DISCRIMINATOR
 //Discriminator model definition information
-ldef_discriminator := ['''layers.Input(shape=(28,28,1))''',
-                        '''layers.Flatten(input_shape=(28,28,1))''',//1
-                        '''layers.Dense(512)''',//2
-                        '''layers.LeakyReLU(alpha=0.2)''',//3
-                        '''layers.Dense(256)''',//4
-                        '''layers.LeakyReLU(alpha=0.2)''',//5
-                        '''layers.Dense(1,activation='sigmoid')'''];//6
+ldef_discriminator := ['''layers.Input(shape=(28, 28, 1))''',
+                        '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same")''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.Dropout(0.25)''',
+                        '''layers.Conv2D(64, kernel_size=3, strides=2, padding="same")''',
+                        '''layers.ZeroPadding2D(padding=((0,1),(0,1)))''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.Dropout(0.25)''',
+                        '''layers.Conv2D(128, kernel_size=3, strides=2, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.Dropout(0.25)''',
+                        '''layers.Conv2D(256, kernel_size=3, strides=1, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.Dropout(0.25)''',
+                        '''layers.Flatten()''',
+                        '''layers.Dense(1, activation="sigmoid")'''];
 
 compiledef_discriminator := '''compile(loss='binary_crossentropy',
                                 optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
@@ -73,24 +87,37 @@ compiledef_discriminator := '''compile(loss='binary_crossentropy',
 
 //COMBINED
 //Combined model definition information
-ldef_combined := ['''layers.Input(shape=(100,))''', 
-                '''layers.Dense(256, input_dim=100)''',//1
-                '''layers.LeakyReLU(alpha=0.2)''',    //3
-                '''layers.BatchNormalization(momentum=0.8)''',//6
-                '''layers.Dense(512)''',    //7
-                '''layers.LeakyReLU(alpha=0.2)''',  //9
-                '''layers.BatchNormalization(momentum=0.8)''',  //12
-                '''layers.Dense(1024)''',   //13
-                '''layers.LeakyReLU(alpha=0.2)''',  //15
-                '''layers.BatchNormalization(momentum=0.8)''',  //18
-                '''layers.Dense(784,activation='tanh')''',  //19
-                '''layers.Reshape((1,28,28,1))''', //20
-                '''layers.Flatten(input_shape=(28,28,1))''',//1
-                '''layers.Dense(512)''',//2
-                '''layers.LeakyReLU(alpha=0.2)''',//3
-                '''layers.Dense(256)''',//4
-                '''layers.LeakyReLU(alpha=0.2)''',//5
-                '''layers.Dense(1,activation='sigmoid')'''];//6
+ldef_combined := ['''layers.Input(shape=(100,))''',
+                    '''layers.Dense(128 * 7 * 7, activation="relu", input_dim=100)''',
+                    '''layers.Reshape((7, 7, 128))''',    
+                    '''layers.UpSampling2D()''',
+                    '''layers.Conv2D(128, kernel_size=3, padding="same")''',
+                    '''layers.BatchNormalization(momentum=0.8)''',
+                    '''layers.Activation("relu")''',
+                    '''layers.UpSampling2D()''',
+                    '''layers.Conv2D(64, kernel_size=3, padding="same")''',
+                    '''layers.BatchNormalization(momentum=0.8)''',
+                    '''layers.Activation("relu")''',
+                    '''layers.Conv2D(1, kernel_size=3, padding="same")''',
+                    '''layers.Activation("tanh")''',
+                    '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same", trainable=False)''',
+                    '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                    '''layers.Dropout(0.25, trainable=False)''',
+                    '''layers.Conv2D(64, kernel_size=3, strides=2, padding="same", trainable=False)''',
+                    '''layers.ZeroPadding2D(padding=((0,1),(0,1)), trainable=False)''',
+                    '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                    '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                    '''layers.Dropout(0.25, trainable=False)''',
+                    '''layers.Conv2D(128, kernel_size=3, strides=2, padding="same", trainable=False)''',
+                    '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                    '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                    '''layers.Dropout(0.25, trainable=False)''',
+                    '''layers.Conv2D(256, kernel_size=3, strides=1, padding="same", trainable=False)''',
+                    '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                    '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                    '''layers.Dropout(0.25, trainable=False)''',
+                    '''layers.Flatten()''',
+                    '''layers.Dense(1, activation="sigmoid", trainable=False)'''];
 
 compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                 
 
@@ -99,6 +126,8 @@ s := GNNI.GetSession();
 
 generator := GNNI.DefineModel(s, ldef_generator, compiledef_generator); //Generator model definition
 //OUTPUT(generator, NAMED('generator_id'));
+//Helps when combining and splitting
+gen_wi := MAX(GNNI.GetWeights(generator), wi);
 
 discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 //OUTPUT(discriminator, NAMED('discriminator_id'));
@@ -109,7 +138,7 @@ combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined 
 //Noise for generator to make fakes
 random_data1 := DATASET(latentDim*100, TRANSFORM(TensData,
         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+        SELF.value := ((RANDOM() % RAND_MAX) /RAND_MAX)));
 noise := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
 //Dataset of 1s for classification
@@ -129,15 +158,15 @@ mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
                     ));
 mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
 x := mixed;
-OUTPUT(x);
-
+//OUTPUT(x);
+/*
 something := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
                                 SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
                                 SELF := LEFT
                                 ));
 tensorboi := Tensor.R4.MakeTensor([0,1], something);
 //OUTPUT(something);
-OUTPUT(tensorboi);
+//OUTPUT(tensorboi);
 //OUTPUT(Tensor.R4.GetRecordCount(tensorboi));
 
 gen_data := GNNI.Predict(generator, noise);
@@ -168,10 +197,10 @@ toTensor := PROJECT(gen_out, TRANSFORM(TensData,
 X_img := Tensor.R4.GetData(X_dat);
 try := X_img + toTensor;
 toNN := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],try);                          
-OUTPUT(toNN);
+//OUTPUT(toNN);
 
 discriminator2 := GNNI.Fit(discriminator, toNN, mixed, batchSize*2, 1);
-OUTPUT(discriminator2);
+//OUTPUT(discriminator2);
 //OUTPUT(try);
 //OUTPUT(Tensor.R4.GetRecordCount(toNN));
 //gen_out := Tensor.R4.AlignTensors(gen_data);
@@ -184,14 +213,14 @@ new_fake := PROJECT(fake, TRANSFORM(t_Tensor,
                             SELF.wi := max_wi,
                             SELF.sliceid := max_sid + COUNTER,
                             SELF := LEFT
-                            )); */
+                            )); 
 whatever := valid + fake;
 output_comb := Tensor.R4.AlignTensors(whatever);
 //OUTPUT(output_comb);
 
 
 //discriminator1 := GNNI.Fit(discriminator, trainX, valid);
-/*
+*/
 gen_imgs1 := GNNI.Predict(generator,noise); //Just to test if all dimensions are correct and if it predicts without any training
 
 OUTPUT(gen_imgs1, ,'~test::whatchamacallit',OVERWRITE);
@@ -228,10 +257,10 @@ SEQUENTIAL(OUT_G,OUT_D,OUT_C);
 
 wts := GNNI.GetWeights(combined);
 
-genWts := wts(wi <= 20);
-splitdisWts := wts(wi > 20);
+genWts := wts(wi <= gen_wi);
+splitdisWts := wts(wi > gen_wi);
 diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
-                        SELF.wi := LEFT.wi - 20,
+                        SELF.wi := LEFT.wi - gen_wi,
                         SELF := LEFT
                         ));
 
@@ -259,4 +288,3 @@ OUTPUT(tens2, NAMED('gen_out'));
 //tensum := int.TensExtract(trainX, 3, 100);
 
 //OUTPUT(tensum); 
-*/

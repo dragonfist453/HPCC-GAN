@@ -35,7 +35,7 @@ batchSize := 100;
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(CHOOSEN(mnist_train_images,1000), imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -140,7 +140,6 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.Activation("relu")''',
                         '''layers.Conv2D(1, kernel_size=3, padding="same")''',
                         '''layers.Activation("tanh")''',
-                        '''layers.Reshape((1,28,28,1))''',
                         '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same", trainable=False)''',
                         '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
                         '''layers.Dropout(0.25, trainable=False)''',
@@ -302,7 +301,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize,1000);
+generator := GAN_train(trainX,batchSize,100);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
