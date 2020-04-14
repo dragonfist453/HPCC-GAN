@@ -35,7 +35,7 @@ batchSize := 100;
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(CHOOSEN(mnist_train_images,1000), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -67,17 +67,18 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //GENERATOR
         //Generator model definition information
         ldef_generator := ['''layers.Input(shape=(100,))''',
-                        '''layers.Dense(256, input_dim=100)''',
-                        '''layers.LeakyReLU(alpha=0.2)''',    
+                        '''layers.Dense(128 * 7 * 7, activation="relu", input_dim=100)''',
+                        '''layers.Reshape((7, 7, 128))''',    
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(128, kernel_size=3, padding="same")''',
                         '''layers.BatchNormalization(momentum=0.8)''',
-                        '''layers.Dense(512)''',
-                        '''layers.LeakyReLU(alpha=0.2)''',
+                        '''layers.Activation("relu")''',
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(64, kernel_size=3, padding="same")''',
                         '''layers.BatchNormalization(momentum=0.8)''',
-                        '''layers.Dense(1024)''',
-                        '''layers.LeakyReLU(alpha=0.2)''',
-                        '''layers.BatchNormalization(momentum=0.8)''',
-                        '''layers.Dense(784,activation='tanh')''',
-                        '''layers.Reshape((1,28,28,1))'''];
+                        '''layers.Activation("relu")''',
+                        '''layers.Conv2D(1, kernel_size=3, padding="same")''',
+                        '''layers.Activation("tanh")'''];
                     
         compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
@@ -85,16 +86,31 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         generator := GNNI.DefineModel(session, ldef_generator, compiledef_generator); //Generator model definition
         gen_def := OUTPUT(generator, NAMED('generater_id'));
 
+        //Helps when combining and splitting
+        gen_wi := MAX(GNNI.GetWeights(generator), wi);
+
 
         //DISCRIMINATOR
         //Discriminator model definition information
-        ldef_discriminator := ['''layers.Input(shape=(28,28,1))''',
-                                '''layers.Flatten(input_shape=(28,28,1))''',
-                                '''layers.Dense(512)''',
+        ldef_discriminator := ['''layers.Input(shape=(28, 28, 1))''',
+                                '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same")''',
                                 '''layers.LeakyReLU(alpha=0.2)''',
-                                '''layers.Dense(256)''',
+                                '''layers.Dropout(0.25)''',
+                                '''layers.Conv2D(64, kernel_size=3, strides=2, padding="same")''',
+                                '''layers.ZeroPadding2D(padding=((0,1),(0,1)))''',
+                                '''layers.BatchNormalization(momentum=0.8)''',
                                 '''layers.LeakyReLU(alpha=0.2)''',
-                                '''layers.Dense(1,activation='sigmoid')'''];
+                                '''layers.Dropout(0.25)''',
+                                '''layers.Conv2D(128, kernel_size=3, strides=2, padding="same")''',
+                                '''layers.BatchNormalization(momentum=0.8)''',
+                                '''layers.LeakyReLU(alpha=0.2)''',
+                                '''layers.Dropout(0.25)''',
+                                '''layers.Conv2D(256, kernel_size=3, strides=1, padding="same")''',
+                                '''layers.BatchNormalization(momentum=0.8)''',
+                                '''layers.LeakyReLU(alpha=0.2)''',
+                                '''layers.Dropout(0.25)''',
+                                '''layers.Flatten()''',
+                                '''layers.Dense(1, activation="sigmoid")'''];
 
         compiledef_discriminator := '''compile(loss='binary_crossentropy',
                                         optimizer=tf.keras.optimizers.Adam(0.0002, 0.5),
@@ -104,33 +120,52 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         discriminator := GNNI.DefineModel(session, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
         dis_def := OUTPUT(discriminator, NAMED('discriminator_id'));
 
+        //Helps when combining and splitting
+        dis_wi := MAX(GNNI.GetWeights(discriminator), wi);
+
 
         //COMBINED functional model
         //Combined model definition information
-        ldef_combined := ['''layers.Input(shape=(100,))''', 
-                        '''layers.Dense(256, input_dim=100)''',//1
-                        '''layers.LeakyReLU(alpha=0.2)''',    //3
-                        '''layers.BatchNormalization(momentum=0.8)''',//6
-                        '''layers.Dense(512)''',    //7
-                        '''layers.LeakyReLU(alpha=0.2)''',  //9
-                        '''layers.BatchNormalization(momentum=0.8)''',  //12
-                        '''layers.Dense(1024)''',   //13
-                        '''layers.LeakyReLU(alpha=0.2)''',  //15
-                        '''layers.BatchNormalization(momentum=0.8)''',  //18
-                        '''layers.Dense(784,activation='tanh')''',  //19
-                        '''layers.Reshape((1,28,28,1))''', //20
-                        '''layers.Flatten(input_shape=(28,28,1), trainable=False)''',//1
-                        '''layers.Dense(512,trainable=False)''',//2
-                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//3
-                        '''layers.Dense(256,trainable=False)''',//4
-                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//5
-                        '''layers.Dense(1,activation='sigmoid',trainable=False)'''];//6
+        ldef_combined := ['''layers.Input(shape=(100,))''',
+                        '''layers.Dense(128 * 7 * 7, activation="relu", input_dim=100)''',
+                        '''layers.Reshape((7, 7, 128))''',    
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(128, kernel_size=3, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Activation("relu")''',
+                        '''layers.UpSampling2D()''',
+                        '''layers.Conv2D(64, kernel_size=3, padding="same")''',
+                        '''layers.BatchNormalization(momentum=0.8)''',
+                        '''layers.Activation("relu")''',
+                        '''layers.Conv2D(1, kernel_size=3, padding="same")''',
+                        '''layers.Activation("tanh")''',
+                        '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same", trainable=False)''',
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                        '''layers.Dropout(0.25, trainable=False)''',
+                        '''layers.Conv2D(64, kernel_size=3, strides=2, padding="same", trainable=False)''',
+                        '''layers.ZeroPadding2D(padding=((0,1),(0,1)), trainable=False)''',
+                        '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                        '''layers.Dropout(0.25, trainable=False)''',
+                        '''layers.Conv2D(128, kernel_size=3, strides=2, padding="same", trainable=False)''',
+                        '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                        '''layers.Dropout(0.25, trainable=False)''',
+                        '''layers.Conv2D(256, kernel_size=3, strides=1, padding="same", trainable=False)''',
+                        '''layers.BatchNormalization(momentum=0.8, trainable=False)''',
+                        '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
+                        '''layers.Dropout(0.25, trainable=False)''',
+                        '''layers.Flatten()''',
+                        '''layers.Dense(1, activation="sigmoid", trainable=False)'''];
 
         compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
         
         //Define combined functional network
         combined := GNNI.DefineModel(session, ldef_combined, compiledef_combined);
         combined_def := OUTPUT(combined, NAMED('combined_id'));
+
+        //Helps when combining and splitting
+        com_wi := MAX(GNNI.GetWeights(combined), wi);
 
         //Dataset of 1s for classification
         valid_data := DATASET(batchSize, TRANSFORM(TensData,
@@ -174,11 +209,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 loopCombined := combined + 2*(epochNum - 1);
                 loopGenerator := generator + (epochNum - 1);
 
-                //Split weights accordingly. Generator layer <=20. Discriminator layers > 20. Discriminator must be subtracted by 20 to get its proper weights
-                genWts := SORT(wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
-                splitdisWts := SORT(wts(wi > (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                //Split weights accordingly. Generator layer <=gen_wi. Discriminator layers > gen_wi. Discriminator must be subtracted by gen_wi to get its proper weights
+                genWts := SORT(wts(wi <= (Tensor.t_WorkItem) gen_wi), wi, sliceid, LOCAL);
+                splitdisWts := SORT(wts(wi > (Tensor.t_WorkItem) gen_wi), wi, sliceid, LOCAL);
                 diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
-                                        SELF.wi := LEFT.wi - 20,
+                                        SELF.wi := LEFT.wi - gen_wi,
                                         SELF := LEFT
                                         ));
 
@@ -226,13 +261,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
                 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 
-                //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
+                //Get discriminator weights, add gen_wi to it, change discriminator weights of combined model, set combined weights
                 updateddisWts := GNNI.GetWeights(discriminator2);
                 newdisWts := PROJECT(updateddisWts, TRANSFORM(t_Tensor,
-                                        SELF.wi := LEFT.wi + 20,
+                                        SELF.wi := LEFT.wi + gen_wi,
                                         SELF := LEFT
                                         ));
-                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) 20) + wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) gen_wi) + wts(wi <= (Tensor.t_WorkItem) gen_wi), wi, sliceid, LOCAL);
                 combined1 := GNNI.SetWeights(loopCombined, comWts);
 
                 //Fit combined model
