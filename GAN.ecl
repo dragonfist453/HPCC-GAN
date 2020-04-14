@@ -78,7 +78,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.BatchNormalization(momentum=0.8)''',
                         '''layers.Activation("relu")''',
                         '''layers.Conv2D(1, kernel_size=3, padding="same")''',
-                        '''layers.Activation("tanh")'''];
+                        '''layers.Activation("tanh")''',
+                        '''layers.Reshape((1,28,28,1))'''];
                     
         compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
@@ -139,6 +140,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.Activation("relu")''',
                         '''layers.Conv2D(1, kernel_size=3, padding="same")''',
                         '''layers.Activation("tanh")''',
+                        '''layers.Reshape((1,28,28,1))''',
                         '''layers.Conv2D(32, kernel_size=3, strides=2, input_shape=(28, 28, 1), padding="same", trainable=False)''',
                         '''layers.LeakyReLU(alpha=0.2, trainable=False)''',
                         '''layers.Dropout(0.25, trainable=False)''',
