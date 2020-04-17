@@ -301,7 +301,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize,100);
+generator := GAN_train(trainX,batchSize,1000);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
