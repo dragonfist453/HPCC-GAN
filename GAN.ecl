@@ -35,7 +35,7 @@ batchSize := 100;
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(choosen(mnist_train_images,2000), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -189,7 +189,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
                 gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                            SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF.shape := [0]+LEFT.shape[2..4],
                             SELF.wi := 1,
                             SELF.sliceid := COUNTER,
                             SELF := LEFT
