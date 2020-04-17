@@ -12,7 +12,7 @@ t_Tensor := Tensor.R4.t_Tensor;
 TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
 
-RAND_MAX := POWER(2,32) - 1;
+RAND_MAX := POWER(2,8) - 1;
 #option('outputLimit',2000);
 
 //Input and Preprocessing
@@ -30,6 +30,9 @@ imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
 batchSize := 100;
+numEpochs := 100;
+outputRows := 5;
+outputCols := 5;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -40,9 +43,9 @@ trainX0 := NORMALIZE(choosen(mnist_train_images,2000), imgSize, TRANSFORM(TensDa
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
 //Random set of normal data
-random_data := DATASET(latentDim, TRANSFORM(TensData,
+random_data := DATASET(latentDim*outputRows*outputCols, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                      
 //Builds tensors for the neural network
 trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
@@ -84,6 +87,9 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         //Define generator network
         generator := GNNI.DefineModel(session, ldef_generator, compiledef_generator); //Generator model definition
         gen_def := OUTPUT(generator, NAMED('generater_id'));
+
+        //This is used to extract weights from combined and also merge weights back
+        gen_wts_id := MAX(GNNI.GetWeights(generator), wi);
 
 
         //DISCRIMINATOR
@@ -145,11 +151,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         SELF.value := 0.00000001));
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
-        //Mixed dataset of above two
-        mixed_data := DATASET((batchSize*2), TRANSFORM(TensData,
-                        SELF.indexes := [COUNTER, 1],
-                        SELF.value := IF(COUNTER <= batchSize,1,0.00000001)
-                        ));
+        //Mixed tensor of above 2
+        mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
+                        SELF.indexes := [COUNTER,1],
+                        SELF.value := IF(COUNTER <= batchSize,1,0.00000001);
+                    ));
         mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
         Y_train := mixed;
 
@@ -157,16 +163,18 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         wts := GNNI.GetWeights(combined);             
 
         DATASET(t_Tensor) train(DATASET(t_Tensor) wts, UNSIGNED4 epochNum) := FUNCTION
+
+                //Selecting random batch of images
                 //Random position in Tensor which is (batchSize) less than COUNT(input)
                 batchPos := RANDOM()%(recordCount - batchSize);
-                
+
                 //Extract (batchSize) tensors starting from a random batchPos from the tensor input. Now we have a random input images of (batchSize) rows.
-                X_dat := int.TensExtract(input, batchPos, 100);
+                X_dat := int.TensExtract(input, batchPos, batchSize);
 
                 //Noise for generator to make fakes
                 random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
@@ -174,11 +182,11 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 loopCombined := combined + 2*(epochNum - 1);
                 loopGenerator := generator + (epochNum - 1);
 
-                //Split weights accordingly. Generator layer <=20. Discriminator layers > 20. Discriminator must be subtracted by 20 to get its proper weights
-                genWts := SORT(wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
-                splitdisWts := SORT(wts(wi > (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                //Split weights accordingly. Generator layer <= gen_wts_id. Discriminator layers > gen_wts_id. Discriminator must be subtracted by gen_wts_id to get its proper weights
+                genWts := SORT(wts(wi <= (Tensor.t_WorkItem) gen_wts_id), wi, sliceid, LOCAL);
+                splitdisWts := SORT(wts(wi > (Tensor.t_WorkItem) gen_wts_id), wi, sliceid, LOCAL);
                 diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
-                                        SELF.wi := LEFT.wi - 20,
+                                        SELF.wi := LEFT.wi - gen_wts_id,
                                         SELF := LEFT
                                         ));
 
@@ -188,31 +196,17 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
-                gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                            SELF.shape := [0]+LEFT.shape[2..4],
-                            SELF.wi := 1,
-                            SELF.sliceid := COUNTER,
-                            SELF := LEFT
-                            ));       
-                        
-                gen_out := Tensor.R4.GetData(gen_imgs);
+                //Correct generator output to appropriate tensor data by extraction using external function
+                toTensor := IMG.GenCorrect(gen_X_dat1);                  
 
-                imagerows := MAX(gen_out, indexes[2]); 
-                imagecols := MAX(gen_out, indexes[3]);
-                imagechannels := MAX(gen_out, indexes[4]);
-
-                dim := imagerows*imagecols*imagechannels;
-
-                toTensor := PROJECT(gen_out, TRANSFORM(TensData,
-                                        SELF.indexes := [(COUNTER-1) DIV dim + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
-                                        SELF := LEFT
-                                        ));
-
+                //Get the data from TensExtract data
                 X_imgs := Tensor.R4.GetData(X_dat);
 
+                //Merge them
                 toNN := X_imgs + toTensor;                        
 
-                X_train := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],toNN);                      
+                //Make them as X_train tensor
+                X_train := Tensor.R4.MakeTensor([0,imgRows,imgCols,imgChannels],toNN);                      
 
                 //Setting discriminator weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
@@ -223,16 +217,16 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Noise for generator to make fakes
                 random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 
                 //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
                 updateddisWts := GNNI.GetWeights(discriminator2);
                 newdisWts := PROJECT(updateddisWts, TRANSFORM(t_Tensor,
-                                        SELF.wi := LEFT.wi + 20,
+                                        SELF.wi := LEFT.wi + gen_wts_id,
                                         SELF := LEFT
                                         ));
-                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) 20) + wts(wi <= (Tensor.t_WorkItem) 20), wi, sliceid, LOCAL);
+                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) gen_wts_id) + wts(wi <= (Tensor.t_WorkItem) gen_wts_id), wi, sliceid, LOCAL);
                 combined1 := GNNI.SetWeights(loopCombined, comWts);
 
                 //Fit combined model
@@ -257,7 +251,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         finalGenerator := generator + numEpochs + 1;
 
         //Setting new weights
-        genWts := SORT(finalWts(wi<=20), wi, sliceid, LOCAL);
+        genWts := SORT(finalWts(wi<=gen_wts_id), wi, sliceid, LOCAL);
         generator_trained := GNNI.SetWeights(finalGenerator, genWts);
 
         //Return the generator id to use generator to predict
@@ -265,17 +259,20 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize,1000);
+generator := GAN_train(trainX,batchSize);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
-generated_data := Tensor.R4.GetData(generated);
-OUTPUT(generated_data, ,'~GAN::output_tensdata', OVERWRITE);
+
+//To make up for multiple images output
+gen_data := IMG.GenCorrect(generated);
+
+OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
 
 //Convert from tensor data to images
-outputImage := IMG.TenstoImg(generated_data);
+outputImage := IMG.TenstoImg(gen_data);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputasPNG(outputImage);
+mnistjpg := IMG.OutputGrid(outputImage, OutputRows, OutputCols, numEpochs);
 
 OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);

@@ -107,7 +107,7 @@ combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined 
 //OUTPUT(combined, NAMED('combined_id'));
 
 //Noise for generator to make fakes
-random_data1 := DATASET(latentDim*100, TRANSFORM(TensData,
+random_data1 := DATASET(latentDim*25, TRANSFORM(TensData,
         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
 noise := Tensor.R4.MakeTensor([0,latentDim], random_data1);
@@ -129,7 +129,7 @@ mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
                     ));
 mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
 x := mixed;
-OUTPUT(x);
+//OUTPUT(x);
 
 something := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
                                 SELF.indexes := [LEFT.indexes[1] + batchSize, LEFT.indexes[2]],
@@ -137,22 +137,24 @@ something := valid_data + PROJECT(fake_data, TRANSFORM(TensData,
                                 ));
 tensorboi := Tensor.R4.MakeTensor([0,1], something);
 //OUTPUT(something);
-OUTPUT(tensorboi);
+//OUTPUT(tensorboi);
 //OUTPUT(Tensor.R4.GetRecordCount(tensorboi));
 
 gen_data := GNNI.Predict(generator, noise);
-
+//OUTPUT(gen_data);
 
 X_dat := int.TensExtract(trainX, 123, 100);
 
 gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
                             SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
+                            SELF.sliceid := LEFT.wi,
                             SELF.wi := 1,
-                            SELF.sliceid := COUNTER,
                             SELF := LEFT
                             ));   
+OUTPUT(gen_imgs);                         
 
 gen_out := Tensor.R4.GetData(gen_imgs);
+OUTPUT(gen_out);
 
 imagerows := MAX(gen_out, indexes[2]); 
 imagecols := MAX(gen_out, indexes[3]);
@@ -161,17 +163,26 @@ imagechannels := MAX(gen_out, indexes[4]);
 dim := imagerows*imagecols*imagechannels;
 
 toTensor := PROJECT(gen_out, TRANSFORM(TensData,
-                            SELF.indexes := [(COUNTER-1) DIV dim + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
+                            SELF.indexes := [(COUNTER-1) DIV dim + 1,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
                             SELF := LEFT
                             ));
+OUTPUT(toTensor);      
+
+outputImage := IMG.TenstoImg(toTensor);
+OUTPUT(outputImage);
+
+mnistjpg := IMG.OutputGrid(outputImage, 5, 5, 1);
+
+OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
 
 X_img := Tensor.R4.GetData(X_dat);
+//OUTPUT(X_img);
 try := X_img + toTensor;
-toNN := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],try);                          
-OUTPUT(toNN);
+toNN := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],try);                 
+//OUTPUT(toNN);
 
 discriminator2 := GNNI.Fit(discriminator, toNN, mixed, batchSize*2, 1);
-OUTPUT(discriminator2);
+//OUTPUT(discriminator2);
 //OUTPUT(try);
 //OUTPUT(Tensor.R4.GetRecordCount(toNN));
 //gen_out := Tensor.R4.AlignTensors(gen_data);

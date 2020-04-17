@@ -117,6 +117,7 @@ class GAN():
         # Adversarial ground truths
         valid = np.ones((batch_size, 1))
         fake = np.full((batch_size, 1), 0.00000001)
+        Y_input = np.concatenate((valid, fake))
 
         # Useful numbers to split com_wts
         gen_layers = len(self.generator.get_weights())
@@ -155,7 +156,6 @@ class GAN():
             
             # Concatenate real and generated images to get X.
             X_input = np.concatenate((imgs, gen_imgs))
-            Y_input = np.concatenate((valid, fake))
 
             # Set weights which are retrieved from combined weights of previous iteration
             self.discriminator.set_weights(dis_wts)
@@ -211,10 +211,11 @@ class GAN():
                 axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
                 axs[i,j].axis('off')
                 cnt += 1
+        fig.canvas.draw()
         fig.savefig("images/%d.png" % epoch)
         plt.close()
 
 
 if __name__ == '__main__':
     gan = GAN()
-    gan.train(epochs=12000, batch_size=100, sample_interval=100)
+    gan.train(epochs=1, batch_size=100, sample_interval=100)
