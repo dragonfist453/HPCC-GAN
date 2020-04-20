@@ -28,7 +28,6 @@ imgCols := 28;
 imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
-numClasses := 10;
 batchSize := 100;
 numEpochs := 100;
 outputRows := 5;
@@ -178,7 +177,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
-                loopDiscriminator := discriminator + 2*(epochNum - 1);
+                loopDiscriminator := discriminator + 3*(epochNum - 1);
                 loopCombined := combined + 2*(epochNum - 1);
                 loopGenerator := generator + (epochNum - 1);
 
@@ -226,7 +225,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                                         SELF.wi := LEFT.wi + gen_wts_id,
                                         SELF := LEFT
                                         ));
-                comWts := SORT(newdisWts(wi > (Tensor.t_WorkItem) gen_wts_id) + wts(wi <= (Tensor.t_WorkItem) gen_wts_id), wi, sliceid, LOCAL);
+                comWts := SORT(wts(wi <= (Tensor.t_WorkItem) gen_wts_id) + newdisWts(wi > (Tensor.t_WorkItem) gen_wts_id), wi, sliceid, LOCAL);
                 combined1 := GNNI.SetWeights(loopCombined, comWts);
 
                 //Fit combined model
@@ -259,7 +258,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-newGenerator := GAN_train(trainX,batchSize);
+newGenerator := GAN_train(trainX, batchSize, numEpochs);
 
 //Predict an image from noise
 generated := GNNI.Predict(newGenerator, train_noise);

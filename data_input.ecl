@@ -151,10 +151,10 @@ gen_imgs := PROJECT(gen_data, TRANSFORM(t_Tensor,
                             SELF.wi := 1,
                             SELF := LEFT
                             ));   
-OUTPUT(gen_imgs);                         
+//OUTPUT(gen_imgs);                         
 
 gen_out := Tensor.R4.GetData(gen_imgs);
-OUTPUT(gen_out);
+//OUTPUT(gen_out);
 
 imagerows := MAX(gen_out, indexes[2]); 
 imagecols := MAX(gen_out, indexes[3]);
@@ -166,14 +166,14 @@ toTensor := PROJECT(gen_out, TRANSFORM(TensData,
                             SELF.indexes := [(COUNTER-1) DIV dim + 1,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
                             SELF := LEFT
                             ));
-OUTPUT(toTensor);      
+//OUTPUT(toTensor);      
 
 outputImage := IMG.TenstoImg(toTensor);
-OUTPUT(outputImage);
+//OUTPUT(outputImage);
 
 mnistjpg := IMG.OutputGrid(outputImage, 5, 5, 1);
 
-OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+//OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
 
 X_img := Tensor.R4.GetData(X_dat);
 //OUTPUT(X_img);
@@ -236,7 +236,7 @@ OUT_D := OUTPUT(gen_data, NAMED('diss'));
 OUT_C := OUTPUT(gen_data2, NAMED('comb'));
 
 SEQUENTIAL(OUT_G,OUT_D,OUT_C);
-
+*/
 wts := GNNI.GetWeights(combined);
 
 genWts := wts(wi <= 20);
@@ -253,9 +253,9 @@ OUTPUT(GNNI.GetWeights(discriminator), NAMED('weird'));
 
 
 combined1 := GNNI.SetWeights(combined, wts);
-OUTPUT(combined1, NAMED('new_comid'));
+//OUTPUT(combined1, NAMED('new_comid'));
 tens3 := GNNI.GetWeights(combined1);
-OUTPUT(tens3, NAMED('com_out'));
+//OUTPUT(tens3, NAMED('com_out'));
 
 discriminator1 := GNNI.SetWeights(discriminator, disWts);
 OUTPUT(discriminator1, NAMED('new_disid'));
@@ -263,11 +263,10 @@ tens1 := GNNI.GetWeights(discriminator1);
 OUTPUT(tens1, NAMED('dis_out'));
 
 generator1 := GNNI.SetWeights(generator, genWts);
-OUTPUT(generator1, NAMED('new_genid'));
+//OUTPUT(generator1, NAMED('new_genid'));
 tens2 := GNNI.GetWeights(generator1);
-OUTPUT(tens2, NAMED('gen_out'));
+//OUTPUT(tens2, NAMED('gen_out'));
 
 //tensum := int.TensExtract(trainX, 3, 100);
 
 //OUTPUT(tensum); 
-*/
