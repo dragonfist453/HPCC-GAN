@@ -197,7 +197,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
                 //Correct generator output to appropriate tensor data by extraction using external function
-                toTensor := IMG.GenCorrect(gen_X_dat1);                  
+                toTensor := IMG.GenCorrect(gen_X_dat1, batchSize, batchSize);                  
 
                 //Get the data from TensExtract data
                 X_imgs := Tensor.R4.GetData(X_dat);
@@ -259,13 +259,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize);
+newGenerator := GAN_train(trainX,batchSize);
 
 //Predict an image from noise
-generated := GNNI.Predict(generator, train_noise);
+generated := GNNI.Predict(newGenerator, train_noise);
 
 //To make up for multiple images output
-gen_data := IMG.GenCorrect(generated);
+gen_data := IMG.GenCorrect(generated, outputRows*outputCols);
 
 OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
 
@@ -273,6 +273,6 @@ OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
 outputImage := IMG.TenstoImg(gen_data);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputGrid(outputImage, OutputRows, OutputCols, numEpochs);
+mnistjpg := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
 OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
