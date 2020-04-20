@@ -29,7 +29,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols * imgChannels;
 latentDim := 100;
 batchSize := 32;
-numEpochs := 1000;
+numEpochs := 1;
 outputRows := 5;
 outputCols := 5;
 
@@ -225,9 +225,9 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum+' D loss : '+d_loss+' G loss : '+g_loss);
 
                 //List of actions to do in order before log progress and returning weights
-                //actions := ORDERED(generator1, discriminator1, discriminator2, d_real, discriminator3, d_fake, d_loss, combined1, combined2, g_loss,logProgress);
+                actions := ORDERED(generator1, discriminator1, discriminator2, discriminator3, d_loss, combined1, combined2, g_loss,logProgress);
 
-                RETURN WHEN(newWts, logProgress);
+                RETURN WHEN(newWts, actions, BEFORE);
         END;        
 
         //Call loop to train numEpochs times
@@ -250,20 +250,8 @@ generator := GAN_train(trainX,batchSize,numEpochs);
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
 
-//Transform generator output dimensions from [1,28,28,1] to [0,28,28,1]
-gen_data := PROJECT(generated, TRANSFORM(t_Tensor,
-                        SELF.wi := 1,
-                        SELF := LEFT
-                        ));
-
-//Get images output
-generated_data := Tensor.R4.GetData(gen_data);
-
-//Project to get indexes right
-output_data := PROJECT(generated_data, TRANSFORM(TensData,
-                        SELF.indexes := [(COUNTER-1) DIV 784 + 1, LEFT.indexes[2], LEFT.indexes[3], LEFT.indexes[4]],
-                        SELF := LEFT
-                        ));
+//Corrected generator output
+output_data := IMG.GenCorrect(generated, outputRows*outputCols);
 
 OUTPUT(output_data, ,'~GAN::output_tensdata', OVERWRITE);
 
