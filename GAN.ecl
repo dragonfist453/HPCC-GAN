@@ -30,18 +30,19 @@ imgSize := imgRows * imgCols * imgChannels;
 latentDim := 100;
 batchSize := 32;
 numEpochs := 1000;
-sampleImages := 25;
+outputRows := 5;
+outputCols := 5;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(choosen(mnist_train_images,2000), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
 //Random set of normal data
-random_data := DATASET(latentDim*sampleImages, TRANSFORM(TensData,
+random_data := DATASET(latentDim*outputRows*outputCols, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
                      
@@ -178,15 +179,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 				
-                //Transform generator output dimensions from [1,28,28,1] to [0,28,28,1]
-                gen_data := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                                                SELF.wi := 1,
-                                                SELF.sliceid := COUNTER,
-                                                SELF := LEFT
-                                                )); 
-
-                //Extract to make proper tensor instead if Tensor list
-                extracted := Tensor.R4.GetData(gen_data);
+                //Correct generator output
+                extracted := IMG.GenCorrect(gen_X_dat1, batchSize);
 
                 //Make proper generated image tensor
                 gen_imgs := Tensor.R4.MakeTensor([0,imgRows, imgCols, 1], extracted);
@@ -276,7 +270,7 @@ OUTPUT(output_data, ,'~GAN::output_tensdata', OVERWRITE);
 //Convert from tensor data to images
 outputImage := IMG.TenstoImg(output_data);
 
-//Convert image data to jpg format to despray
-mnistjpg := IMG.OutputasPNG(outputImage);
+//Convert image data to grid format to despray
+mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols);
 
-OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
