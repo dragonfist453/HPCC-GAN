@@ -5,3 +5,4 @@
 /images/*.png
 .eclcc
 GPUCache
+output.txt
