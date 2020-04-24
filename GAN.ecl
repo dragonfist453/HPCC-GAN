@@ -30,6 +30,9 @@ imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
 batchSize := 100;
+numEpochs := 100;
+outputRows := 5;
+outputCols := 5;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -40,7 +43,7 @@ trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
 //Random set of normal data
-random_data := DATASET(latentDim, TRANSFORM(TensData,
+random_data := DATASET(latentDim*outputRows*outputCols, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / (RAND_MAX/2)) -1));
                      
@@ -224,31 +227,13 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
-                gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                            SELF.shape := [0,LEFT.shape[2],LEFT.shape[3],LEFT.shape[4]],
-                            SELF.wi := 1,
-                            SELF.sliceid := COUNTER,
-                            SELF := LEFT
-                            ));       
-                        
-                gen_out := Tensor.R4.GetData(gen_imgs);
-
-                imagerows := MAX(gen_out, indexes[2]); 
-                imagecols := MAX(gen_out, indexes[3]);
-                imagechannels := MAX(gen_out, indexes[4]);
-
-                dim := imagerows*imagecols*imagechannels;
-
-                toTensor := PROJECT(gen_out, TRANSFORM(TensData,
-                                        SELF.indexes := [(COUNTER-1) DIV dim + 1 + batchSize,LEFT.indexes[2],LEFT.indexes[3],LEFT.indexes[4]],
-                                        SELF := LEFT
-                                        ));
+                toTensor := IMG.GenCorrect(gen_X_dat1, batchSize, batchSize);
 
                 X_imgs := Tensor.R4.GetData(X_dat);
 
                 toNN := X_imgs + toTensor;                        
 
-                X_train := Tensor.R4.MakeTensor([0,imagerows,imagecols,imagechannels],toNN);                      
+                X_train := Tensor.R4.MakeTensor([0,imgRows, imgCols, imgChannels],toNN);                      
 
                 //Setting discriminator weights
                 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
@@ -301,17 +286,17 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 END;        
 
 //Get generator after training
-generator := GAN_train(trainX,batchSize,1000);
+generator := GAN_train(trainX,batchSize,numEpochs);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
-generated_data := Tensor.R4.GetData(generated);
+generated_data := IMG.GenCorrect(generated, batchSize);
 OUTPUT(generated_data, ,'~GAN::output_tensdata', OVERWRITE);
 
 //Convert from tensor data to images
 outputImage := IMG.TenstoImg(generated_data);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputasPNG(outputImage);
+mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
-OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
