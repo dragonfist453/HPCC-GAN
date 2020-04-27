@@ -6,6 +6,7 @@ IMPORT GNN.GNNI;
 IMPORT GNN.Internal AS Int;
 IMPORT Std.System.Thorlib;
 IMPORT Std.System.Log AS Syslog;
+IMPORT STD;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
 t_Tensor := Tensor.R4.t_Tensor;
@@ -33,6 +34,16 @@ numEpochs := 100;
 epochNum := 1;
 outputRows := 5;
 outputCols := 5;
+
+//Despray variables
+serv := 'server=http://192.168.86.149:8010 ';
+over := 'overwrite=1 ';
+action  := 'action=despray ';
+dstip   := 'dstip=192.168.86.149 ';
+dstfile := 'dstfile=/var/lib/HPCCSystems/mydropzone/*.png ';
+srcname := 'srcname=~gan::output_image ';
+splitprefix := 'splitprefix=filename,filesize ';
+cmd := serv + over + action + dstip + dstfile + srcname + splitprefix;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -75,7 +86,7 @@ ldef_generator := ['''layers.Input(shape=(100,))''',
                 '''layers.LeakyReLU(alpha=0.2)''',
                 '''layers.BatchNormalization(momentum=0.8)''',
                 '''layers.Dense(784,activation='tanh')''',
-                '''layers.Reshape((1,28,28,1))'''];
+                '''layers.Reshape((28,28,1))'''];
             
 compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
@@ -203,31 +214,12 @@ gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 OUTPUT(gen_X_dat1, NAMED('generated_tensor'));
 
 //Output extracted TensData
-gen_out := Tensor.R4.GetData(gen_X_dat1);
-OUTPUT(gen_out, NAMED('no_transform_generated_tensdata'));
-
-//Transforms the generated data so that all of the tensors are in same workunit and multiple images may be obtained with GetData
-gen_imgs := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
-                            SELF.shape := [0]+LEFT.shape[2..4],
-                            SELF.sliceid := LEFT.wi,
-                            SELF.wi := 1,
-                            SELF := LEFT
-                            ));
-OUTPUT(gen_imgs, NAMED('transformed_generated_wi_1'));                            
-
-//Get the generated images 
-generated_data := Tensor.R4.GetData(gen_imgs);
-OUTPUT(generated_data, NAMED('transformed_generated_tensdata'));
-
-//Calculations for the output data to transform to tensor
-imagerows := MAX(generated_data, indexes[2]); 
-imagecols := MAX(generated_data, indexes[3]);
-imagechannels := MAX(generated_data, indexes[4]);
-dim := imagerows*imagecols*imagechannels;
+generated_data := Tensor.R4.GetData(gen_X_dat1);
+OUTPUT(generated_data, NAMED('no_transform_generated_tensdata'));
 
 //Transform the generated data to produce appropriate indexes. The LEFT indexes are of the form 1, 101, 201 and so on. To change all those to meaningful indices.
 toTensor := PROJECT(generated_data, TRANSFORM(TensData,
-                                SELF.indexes := [LEFT.indexes[1]/batchSize + 1 + batchSize, LEFT.indexes[2..4] ],
+                                SELF.indexes := [LEFT.indexes[1] + batchSize] + LEFT.indexes[2..4] ,
                                 SELF := LEFT
                                 ));
 OUTPUT(toTensor, NAMED('generated_tensData_updated_index'));                                             
@@ -282,32 +274,20 @@ genWts2 := SORT(wts(wi<=gen_wts_id), wi, sliceid, LOCAL);
 generator_trained := GNNI.SetWeights(finalGenerator, genWts2);   
 
 //Predict an image from noise
-generated := GNNI.Predict(generator_trained, train_noise);
-
-//Transforms the generated data so that all of the tensors are in same workunit and multiple images may be obtained with GetData
-gen_imgs2 := PROJECT(generated, TRANSFORM(t_Tensor,
-                            SELF.shape := [0]+LEFT.shape[2..4],
-                            SELF.sliceid := LEFT.wi,
-                            SELF.wi := 1,
-                            SELF := LEFT
-                            ));
-OUTPUT(gen_imgs2, NAMED('transformed_generator_output_wi_1'));                            
+generated := GNNI.Predict(generator_trained, train_noise);                       
 
 //Get the generated images 
-generated_data2 := Tensor.R4.GetData(gen_imgs2);
+generated_data2 := Tensor.R4.GetData(generated);
 OUTPUT(generated_data2, NAMED('transformed_generator_output_tensdata'));
 
-//Transform the generated data to produce appropriate indexes. The LEFT indexes are of the form 1, 101, 201 and so on. To change all those to meaningful indices.
-gen_data := PROJECT(generated_data2, TRANSFORM(TensData,
-                                SELF.indexes := [LEFT.indexes[1]/batchSize + 1 + batchSize, LEFT.indexes[2..4] ],
-                                SELF := LEFT
-                                ));
-OUTPUT(gen_data, NAMED('generator_output_tensData_updated_index'));
-
 //Convert from tensor data to images
-outputImage := IMG.TenstoImg(gen_data);
+outputImage := IMG.TenstoImg(generated_data2);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
+mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
-//OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
+
+//Despraying image onto landing zone
+despray_image := STD.File.DfuPlusExec(cmd);
+WHEN(EXISTS(mnistgrid), despray_image);

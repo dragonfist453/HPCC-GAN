@@ -6,6 +6,7 @@ IMPORT GNN.GNNI;
 IMPORT GNN.Internal AS Int;
 IMPORT Std.System.Thorlib;
 IMPORT Std.System.Log AS Syslog;
+IMPORT Std;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
 t_Tensor := Tensor.R4.t_Tensor;
@@ -22,22 +23,32 @@ IMG_FORMAT := RECORD
 END;
 
 //Train data definitions
-imgcount_train := 60000;
 imgRows := 28;
 imgCols := 28;
 imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 batchSize := 100;
-numEpochs := 100;
+numEpochs := 1;
 outputRows := 5;
 outputCols := 5;
+numRecords := 300;
+
+//Despray variables
+serv := 'server=http://192.168.86.149:8010 ';
+over := 'overwrite=1 ';
+action  := 'action=despray ';
+dstip   := 'dstip=192.168.86.149 ';
+dstfile := 'dstfile=/var/lib/HPCCSystems/mydropzone/*.png ';
+srcname := 'srcname=~gan::output_image ';
+splitprefix := 'splitprefix=filename,filesize ';
+cmd := serv + over + action + dstip + dstfile + srcname + splitprefix;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(choosen(mnist_train_images,2000), imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(choosen(mnist_train_images,numRecords), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -196,7 +207,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
                 //Correct generator output to appropriate tensor data by extraction using external function
-                toTensor := IMG.GenCorrect(gen_X_dat1, batchSize, batchSize);                  
+                toTensor := IMG.GenCorrect(gen_X_dat1, batchSize);                  
 
                 //Get the data from TensExtract data
                 X_imgs := Tensor.R4.GetData(X_dat);
@@ -264,7 +275,7 @@ newGenerator := GAN_train(trainX, batchSize, numEpochs);
 generated := GNNI.Predict(newGenerator, train_noise);
 
 //To make up for multiple images output
-gen_data := IMG.GenCorrect(generated, outputRows*outputCols);
+gen_data := IMG.GenCorrect(generated);
 
 OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
 
@@ -272,6 +283,10 @@ OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
 outputImage := IMG.TenstoImg(gen_data);
 
 //Convert image data to jpg format to despray
-mnistjpg := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
+mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
-OUTPUT(mnistjpg, ,'~GAN::output_image', OVERWRITE);
+OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
+
+//Despraying image onto landing zone
+despray_image := STD.File.DfuPlusExec(cmd);
+WHEN(EXISTS(mnistgrid), despray_image);
