@@ -6,6 +6,7 @@ IMPORT GNN.GNNI;
 IMPORT GNN.Internal AS Int;
 IMPORT Std.System.Thorlib;
 IMPORT Std.System.Log AS Syslog;
+IMPORT Std;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
 t_Tensor := Tensor.R4.t_Tensor;
@@ -29,16 +30,27 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
-batchSize := 100;
+batchSize := 64;
 numEpochs := 100;
 outputRows := 5;
 outputCols := 5;
+numRecords := 60000;
+
+serv := 'server=http://192.168.86.149:8010 ';
+over := 'overwrite=1 ';
+action  := 'action=despray ';
+dstip   := 'dstip=192.168.86.149 ';
+dstfile := 'dstfile=/var/lib/HPCCSystems/mydropzone/*.png ';
+srcname := 'srcname=~gan::output_image ';
+splitprefix := 'splitprefix=filename,filesize ';
+
+cmd := serv + over + action + dstip + dstfile + srcname + splitprefix;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(choosen(mnist_train_images,numRecords), imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -278,7 +290,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         finalGenerator := generator + numEpochs + 1;
 
         //Setting new weights
-        genWts := SORT(finalWts(wi<=20), wi, sliceid, LOCAL);
+        genWts := SORT(finalWts(wi<=gen_wi), wi, sliceid, LOCAL);
         generator_trained := GNNI.SetWeights(finalGenerator, genWts);
 
         //Return the generator id to use generator to predict
@@ -290,7 +302,7 @@ generator := GAN_train(trainX,batchSize,numEpochs);
 
 //Predict an image from noise
 generated := GNNI.Predict(generator, train_noise);
-generated_data := IMG.GenCorrect(generated, batchSize);
+generated_data := IMG.GenCorrect(generated, outputRows*outputCols);
 OUTPUT(generated_data, ,'~GAN::output_tensdata', OVERWRITE);
 
 //Convert from tensor data to images
@@ -300,3 +312,7 @@ outputImage := IMG.TenstoImg(generated_data);
 mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
 OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
+
+despray_image := STD.File.DfuPlusExec(cmd);
+
+WHEN(EXISTS(mnistgrid), despray_image);
