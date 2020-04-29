@@ -30,7 +30,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 batchSize := 100;
-numEpochs := 300;
+numEpochs := 100;
 outputRows := 5;
 outputCols := 5;
 numRecords := 60000;
@@ -56,14 +56,12 @@ trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
 //Random set of normal data
 random_data := DATASET(latentDim*outputRows*outputCols, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX_2) - 1 * -1 / -1 ));
                      
 //Builds tensors for the neural network
 trainX := Tensor.R4.MakeTensor([0, imgRows, imgCols, 1], trainX0); 
 train_noise := Tensor.R4.MakeTensor([0,latentDim], random_data);
 
-
-//Function's logic seems to be perfect after integration of transfer of weights and non-trainable layers. 
 
 //Please address later about how users can change the layers efficiently. VERY IMPORTANT.
 //Returns model ID to predict using the GAN
@@ -255,9 +253,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Logging progress when done
                 logProgress := Syslog.addWorkunitInformation('GAN training - Epoch : '+epochNum);
 
-                //List of actions to do in order before log progress and returning weights
-                //actions := ORDERED(discriminator1, discriminator2, generator1, discriminator3, combined1, combined2, logProgress);
-
+		//Log progress if the newWts are produced
                 RETURN WHEN(newWts, logProgress);
         END;        
 
@@ -284,16 +280,15 @@ generated := GNNI.Predict(newGenerator, train_noise);
 //To make up for multiple images output
 gen_data := IMG.GenCorrect(generated);
 
-OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
-
 //Convert from tensor data to images
 outputImage := IMG.TenstoImg(gen_data);
 
 //Convert image data to jpg format to despray
 mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
 
-OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
+//Output the grid image to despray as a PNG using prefix filename,filesize
+img_out := OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
 
 //Despraying image onto landing zone
 despray_image := STD.File.DfuPlusExec(cmd);
-WHEN(exists(mnistgrid), despray_image);
+SEQUENTIAL(img_out, despray_image);
