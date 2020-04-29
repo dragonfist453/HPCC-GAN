@@ -30,10 +30,10 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 batchSize := 100;
-numEpochs := 100;
+numEpochs := 1;
 outputRows := 5;
 outputCols := 5;
-numRecords := 60000;
+numRecords := 400;
 
 //Despray variables
 serv := 'server=localhost:8010 ';
@@ -280,8 +280,11 @@ generated := GNNI.Predict(newGenerator, train_noise);
 //To make up for multiple images output
 gen_data := IMG.GenCorrect(generated);
 
-//Convert from tensor data to images
-outputImage := IMG.TenstoImg(gen_data);
+//Outputs the tensor onto a file, so the graphs don't repeat
+OUTPUT(gen_data, ,'~GAN::output_tensdata', OVERWRITE);
+
+//Convert from tensor data to images by taking from file
+outputImage := IMG.TenstoImg(DATASET('~GAN::output_tensdata',TensData,FLAT ));
 
 //Convert image data to jpg format to despray
 mnistgrid := IMG.OutputGrid(outputImage, outputRows, outputCols, numEpochs);
