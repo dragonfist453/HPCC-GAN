@@ -14,6 +14,7 @@ TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
 
 RAND_MAX := POWER(2,8) - 1;
+RAND_MAX_2 := RAND_MAX / 2;
 #option('outputLimit',2000);
 
 //Input and Preprocessing
@@ -173,7 +174,14 @@ Y_train := mixed;
 
 //Get only initial combined weights
 wts := GNNI.GetWeights(combined);
-OUTPUT(wts, NAMED('comwts'));             
+OUTPUT(wts, NAMED('comwts'));
+
+DATASET(TensData) makeRandom(UNSIGNED a) := FUNCTION
+    reslt := DATASET(latentDim*batchSize, TRANSFORM(TensData,
+                SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
+                SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX_2) - 1 * a / a));
+    RETURN reslt;
+END;
 
 //Selecting random batch of images
 //Random position in Tensor which is (batchSize) less than COUNT(input)
@@ -184,9 +192,7 @@ X_dat := int.TensExtract(trainX, batchPos, batchSize);
 OUTPUT(X_dat, NAMED('extracted_trainX'));
 
 //Noise for generator to make fakes
-random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-    SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-    SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
+random_data1 := makeRandom(1);
 OUTPUT(random_data1, NAMED('random1_tensdata_togenerate'));    
 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 OUTPUT(train_noise1, NAMED('noisetensor_togenerate'));
@@ -241,9 +247,7 @@ discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts);
 discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize*2, 1);
 
 //Noise for generator to make fakes
-random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-    SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-    SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
+random_data2 := makeRandom(2);
 OUTPUT(random_data1, NAMED('random2_tensdata_tofit'));    
 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 OUTPUT(train_noise1, NAMED('noisetensor_tofit'));

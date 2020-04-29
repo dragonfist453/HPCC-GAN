@@ -14,6 +14,7 @@ TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
 
 RAND_MAX := POWER(2,8) - 1;
+RAND_MAX_2 := RAND_MAX / 2;
 #option('outputLimit',2000);
 
 //Input and Preprocessing
@@ -29,13 +30,13 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 batchSize := 100;
-numEpochs := 1;
+numEpochs := 300;
 outputRows := 5;
 outputCols := 5;
-numRecords := 300;
+numRecords := 60000;
 
 //Despray variables
-serv := 'server=http://192.168.86.149:8010 ';
+serv := 'server=localhost:8010 ';
 over := 'overwrite=1 ';
 action  := 'action=despray ';
 dstip   := 'dstip=192.168.86.149 ';
@@ -45,10 +46,10 @@ splitprefix := 'splitprefix=filename,filesize ';
 cmd := serv + over + action + dstip + dstfile + srcname + splitprefix;
 
 //Take MNIST dataset using IMG module
-mnist_train_images := IMG.MNIST_train_image();
+mnist_train_images := IMG.MNIST_train_image()[..numRecords];
 
 //Tensor dataset having image data normalised to range of -1 to 1
-trainX0 := NORMALIZE(choosen(mnist_train_images,numRecords), imgSize, TRANSFORM(TensData,
+trainX0 := NORMALIZE(mnist_train_images, imgSize, TRANSFORM(TensData,
                             SELF.indexes := [LEFT.id, (COUNTER-1) DIV 28+1, (COUNTER-1)%28+1, 1],
                             SELF.value := ( (REAL) (>UNSIGNED1<) LEFT.image[counter] )/127.5 - 1 )); 
 
@@ -90,7 +91,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.LeakyReLU(alpha=0.2)''',
                         '''layers.BatchNormalization(momentum=0.8)''',
                         '''layers.Dense(784,activation='tanh')''',
-                        '''layers.Reshape((1,28,28,1))'''];
+                        '''layers.Reshape((28,28,1))'''];
                     
         compiledef_generator := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
@@ -134,7 +135,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                         '''layers.LeakyReLU(alpha=0.2)''',  //15
                         '''layers.BatchNormalization(momentum=0.8)''',  //18
                         '''layers.Dense(784,activation='tanh')''',  //19
-                        '''layers.Reshape((1,28,28,1))''', //20
+                        '''layers.Reshape((28,28,1))''', //20
                         '''layers.Flatten(input_shape=(28,28,1), trainable=False)''',//1
                         '''layers.Dense(512,trainable=False)''',//2
                         '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//3
@@ -170,7 +171,15 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         Y_train := mixed;
 
         //Get only initial combined weights
-        wts := GNNI.GetWeights(combined);             
+        wts := GNNI.GetWeights(combined); 
+
+        //Fooling ECL to produce unique random data by multiplying and dividing by a number
+        DATASET(TensData) makeRandom(UNSIGNED a) := FUNCTION
+          reslt := DATASET(latentDim*batchSize, TRANSFORM(TensData,
+                        SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
+                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX_2) - 1 * a / a));
+          RETURN reslt;
+        END;
 
         DATASET(t_Tensor) train(DATASET(t_Tensor) wts, UNSIGNED4 epochNum) := FUNCTION
 
@@ -182,9 +191,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 X_dat := int.TensExtract(input, batchPos, batchSize);
 
                 //Noise for generator to make fakes
-                random_data1 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-                        SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
+                random_data1 := makeRandom(epochNum*2);
                 train_noise1 := Tensor.R4.MakeTensor([0,latentDim], random_data1);
 
                 //New model IDs
@@ -207,13 +214,15 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
                 //Correct generator output to appropriate tensor data by extraction using external function
-                toTensor := IMG.GenCorrect(gen_X_dat1, batchSize);                  
+                toTensor := PROJECT(Tensor.R4.GetData(gen_X_dat1), TRANSFORM(RECORDOF(LEFT),
+                                SELF.indexes := [LEFT.indexes[1] + batchSize] + LEFT.indexes[2..],
+                                SELF := LEFT));                  
 
                 //Get the data from TensExtract data
                 X_imgs := Tensor.R4.GetData(X_dat);
 
                 //Merge them
-                toNN := X_imgs + toTensor;                        
+                toNN := X_imgs + toTensor;                              
 
                 //Make them as X_train tensor
                 X_train := Tensor.R4.MakeTensor([0,imgRows,imgCols,imgChannels],toNN);                      
@@ -224,10 +233,8 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Fitting real and random data
                 discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize*2, 1);
 
-                //Noise for generator to make fakes
-                random_data2 := DATASET(latentDim*batchSize, TRANSFORM(TensData,
-                        SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
-                        SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX)));
+                //Noise to train combined model
+                random_data2 := makeRandom(epochNum*2+1);
                 train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 
                 //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
@@ -289,4 +296,4 @@ OUTPUT(mnistgrid, ,'~GAN::output_image', OVERWRITE);
 
 //Despraying image onto landing zone
 despray_image := STD.File.DfuPlusExec(cmd);
-WHEN(EXISTS(mnistgrid), despray_image);
+WHEN(exists(mnistgrid), despray_image);
