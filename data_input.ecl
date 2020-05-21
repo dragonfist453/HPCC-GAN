@@ -28,7 +28,7 @@ imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
 numClasses := 10;
-batchSize := 100;
+batchSize := 103;
 
 //Take MNIST dataset using IMG module
 mnist_train_images := IMG.MNIST_train_image();
@@ -92,7 +92,7 @@ ldef_combined := ['''layers.Input(shape=(100,))''',
                 '''layers.LeakyReLU(alpha=0.2)''',//5
                 '''layers.Dense(1,activation='sigmoid')'''];//6
 
-compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                 
+compiledef_combined := '''compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';                 
 
 
 s := GNNI.GetSession();
@@ -104,7 +104,7 @@ discriminator := GNNI.DefineModel(s, ldef_discriminator, compiledef_discriminato
 //OUTPUT(discriminator, NAMED('discriminator_id'));
 
 combined := GNNI.DefineModel(s, ldef_combined, compiledef_combined); //Combined model definition
-//OUTPUT(combined, NAMED('combined_id'));
+OUTPUT(combined, NAMED('combined_id'));
 
 //Noise for generator to make fakes
 random_data1 := DATASET(latentDim*25, TRANSFORM(TensData,
@@ -238,7 +238,7 @@ OUT_C := OUTPUT(gen_data2, NAMED('comb'));
 SEQUENTIAL(OUT_G,OUT_D,OUT_C);
 */
 wts := GNNI.GetWeights(combined);
-
+OUTPUT(wts, NAMED('combined_wts'));
 genWts := wts(wi <= 20);
 splitdisWts := wts(wi > 20);
 diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
@@ -249,24 +249,25 @@ diswts := PROJECT(splitdisWts, TRANSFORM(t_Tensor,
 OUTPUT(disWts, NAMED('project_dis'));
 OUTPUT(genWts, NAMED('project_gen'));
 
-OUTPUT(GNNI.GetWeights(discriminator), NAMED('weird'));
+//OUTPUT(GNNI.GetWeights(discriminator), NAMED('discriminator_wts'));
+//OUTPUT(GNNI.GetWeights(generator), NAMED('generator_wts'));
 
 
 combined1 := GNNI.SetWeights(combined, wts);
-//OUTPUT(combined1, NAMED('new_comid'));
+OUTPUT(combined1, NAMED('new_comid'));
 tens3 := GNNI.GetWeights(combined1);
 //OUTPUT(tens3, NAMED('com_out'));
 
 discriminator1 := GNNI.SetWeights(discriminator, disWts);
-OUTPUT(discriminator1, NAMED('new_disid'));
+//OUTPUT(discriminator1, NAMED('new_disid'));
 tens1 := GNNI.GetWeights(discriminator1);
-OUTPUT(tens1, NAMED('dis_out'));
+//OUTPUT(tens1, NAMED('dis_out'));
 
 generator1 := GNNI.SetWeights(generator, genWts);
 //OUTPUT(generator1, NAMED('new_genid'));
 tens2 := GNNI.GetWeights(generator1);
 //OUTPUT(tens2, NAMED('gen_out'));
 
-//tensum := int.TensExtract(trainX, 3, 100);
+tensum := int.TensExtract(trainX, 3, 100);
 
 //OUTPUT(tensum); 

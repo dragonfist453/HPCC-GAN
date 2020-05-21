@@ -9,6 +9,8 @@ IMPORT Std.System.Log AS Syslog;
 IMPORT Std;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
+nNodes := Thorlib.nodes();
+nodeId := Thorlib.node();
 t_Tensor := Tensor.R4.t_Tensor;
 TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
@@ -29,7 +31,7 @@ imgCols := 28;
 imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
-batchSize := 100;
+batchSize := 103;
 numEpochs := 1;
 outputRows := 5;
 outputCols := 5;
@@ -148,20 +150,20 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
         combined_def := OUTPUT(combined, NAMED('combined_id'));
 
         //Dataset of 1s for classification
-        valid_data := DATASET(batchSize, TRANSFORM(TensData,
+        valid_data := DATASET(batchSize*nNodes, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
                         SELF.value := 1));
         valid := Tensor.R4.MakeTensor([0,1],valid_data);
 
         //Kindly note: 0.00000001 was used instead of 0 as 0 wasn't read as a tensor data in the backend. It fits fine even in python, so it's used.
         //Dataset of 0s for classification
-        fake_data := DATASET(batchSize, TRANSFORM(TensData,
+        fake_data := DATASET(batchSize*nNodes, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER, 1],
                         SELF.value := 0.00000001));
         fake := Tensor.R4.MakeTensor([0,1],fake_data);
 
         //Mixed tensor of above 2
-        mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
+        mixed_data := DATASET(batchSize*2*nNodes, TRANSFORM(TensData,
                         SELF.indexes := [COUNTER,1],
                         SELF.value := IF(COUNTER <= batchSize,1,0.00000001);
                     ));
@@ -173,7 +175,7 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
 
         //Fooling ECL to produce unique random data by multiplying and dividing by a number
         DATASET(TensData) makeRandom(UNSIGNED a) := FUNCTION
-          reslt := DATASET(latentDim*batchSize, TRANSFORM(TensData,
+          reslt := DATASET(latentDim*batchSize*nNodes, TRANSFORM(TensData,
                         SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                         SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX_2) - 1 * a / a));
           RETURN reslt;
@@ -211,9 +213,12 @@ UNSIGNED4 GAN_train(DATASET(t_Tensor) input,
                 //Predicting using Generator for fake images
                 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 
+                //Distribute the records
+                gen_X_datD := DISTRIBUTE(gen_X_dat1, wi);
+
                 //Correct generator output to appropriate tensor data by extraction using external function
-                toTensor := PROJECT(Tensor.R4.GetData(gen_X_dat1), TRANSFORM(RECORDOF(LEFT),
-                                SELF.indexes := [LEFT.indexes[1] + batchSize] + LEFT.indexes[2..],
+                toTensor := PROJECT(Tensor.R4.GetData(gen_X_datD), TRANSFORM(RECORDOF(LEFT),
+                                SELF.indexes := [LEFT.indexes[1] + batchSize*nNodes] + LEFT.indexes[2..],
                                 SELF := LEFT));                  
 
                 //Get the data from TensExtract data

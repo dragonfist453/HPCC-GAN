@@ -9,6 +9,8 @@ IMPORT Std.System.Log AS Syslog;
 IMPORT STD;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
+nNodes := Thorlib.nodes();
+nodeId := Thorlib.node();
 t_Tensor := Tensor.R4.t_Tensor;
 TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
@@ -37,10 +39,10 @@ outputRows := 5;
 outputCols := 5;
 
 //Despray variables
-serv := 'server=http://192.168.86.149:8010 ';
+serv := 'server=http://172.16.2.240:8010 ';
 over := 'overwrite=1 ';
 action  := 'action=despray ';
-dstip   := 'dstip=192.168.86.149 ';
+dstip   := 'dstip=172.16.2.240 ';
 dstfile := 'dstfile=/var/lib/HPCCSystems/mydropzone/*.png ';
 srcname := 'srcname=~gan::output_image ';
 splitprefix := 'splitprefix=filename,filesize ';
@@ -146,7 +148,7 @@ combined := GNNI.DefineModel(session, ldef_combined, compiledef_combined);
 OUTPUT(combined, NAMED('combined_id'));
 
 //Dataset of 1s for classification
-valid_data := DATASET(batchSize, TRANSFORM(TensData,
+valid_data := DATASET(batchSize*nNodes, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
                 SELF.value := 1));
 OUTPUT(valid_data, NAMED('valid_tensdata'));
@@ -155,7 +157,7 @@ OUTPUT(valid, NAMED('valid_tensor'));
 
 //Kindly note: 0.00000001 was used instead of 0 as 0 wasn't read as a tensor data in the backend. It fits fine even in python, so it's used.
 //Dataset of 0s for classification
-fake_data := DATASET(batchSize, TRANSFORM(TensData,
+fake_data := DATASET(batchSize*nNodes, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER, 1],
                 SELF.value := 0.00000001));
 OUTPUT(fake_data, NAMED('fake_tensdata'));
@@ -163,9 +165,9 @@ fake := Tensor.R4.MakeTensor([0,1],fake_data);
 OUTPUT(fake, NAMED('fake_tensor'));
 
 //Mixed tensor of above 2
-mixed_data := DATASET(batchSize*2, TRANSFORM(TensData,
+mixed_data := DATASET(batchSize*2*nNodes, TRANSFORM(TensData,
                 SELF.indexes := [COUNTER,1],
-                SELF.value := IF(COUNTER <= batchSize,1,0.00000001);
+                SELF.value := IF(COUNTER <= batchSize*nNodes,1,0.00000001);
             ));
 OUTPUT(mixed_data, NAMED('mixed_tensdata'));            
 mixed := Tensor.R4.MakeTensor([0,1], mixed_data);
@@ -177,7 +179,7 @@ wts := GNNI.GetWeights(combined);
 OUTPUT(wts, NAMED('comwts'));
 
 DATASET(TensData) makeRandom(UNSIGNED a) := FUNCTION
-    reslt := DATASET(latentDim*batchSize, TRANSFORM(TensData,
+    reslt := DATASET(latentDim*batchSize*nNodes, TRANSFORM(TensData,
                 SELF.indexes := [(COUNTER-1) DIV latentDim + 1, (COUNTER-1)%latentDim + 1],
                 SELF.value := ((RANDOM() % RAND_MAX) / RAND_MAX_2) - 1 * a / a));
     RETURN reslt;
@@ -185,7 +187,7 @@ END;
 
 //Selecting random batch of images
 //Random position in Tensor which is (batchSize) less than COUNT(input)
-batchPos := RANDOM()%(recordCount - batchSize);
+batchPos := RANDOM()%(recordCount/nNodes - batchSize);
 
 //Extract (batchSize) tensors starting from a random batchPos from the tensor input. Now we have a random input images of (batchSize) rows.
 X_dat := int.TensExtract(trainX, batchPos, batchSize);
@@ -219,32 +221,33 @@ generator1 := GNNI.SetWeights(loopGenerator, genWts);
 gen_X_dat1 := GNNI.Predict(generator1, train_noise1);
 OUTPUT(gen_X_dat1, NAMED('generated_tensor'));
 
-//Output extracted TensData
-generated_data := Tensor.R4.GetData(gen_X_dat1);
-OUTPUT(generated_data, NAMED('no_transform_generated_tensdata'));
-
-//Transform the generated data to produce appropriate indexes. The LEFT indexes are of the form 1, 101, 201 and so on. To change all those to meaningful indices.
-toTensor := PROJECT(generated_data, TRANSFORM(TensData,
-                                SELF.indexes := [LEFT.indexes[1] + batchSize] + LEFT.indexes[2..4] ,
-                                SELF := LEFT
-                                ));
-OUTPUT(toTensor, NAMED('generated_tensData_updated_index'));                                             
-
-//Get the data from TensExtract data
-X_imgs := Tensor.R4.GetData(X_dat);
-
-//Merge them
-toNN := X_imgs + toTensor;                        
-
-//Make them as X_train tensor
-X_train := Tensor.R4.MakeTensor([0,imgRows,imgCols,imgChannels],toNN);  
-OUTPUT(X_train, NAMED('train_input_tensor'));                    
-
 //Setting discriminator weights
 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
 
-//Fitting real and random data
-discriminator2 := GNNI.Fit(discriminator1, X_train, Y_train, batchSize*2, 1);
+//Aligning tensors
+y1 := PROJECT(valid, TRANSFORM(RECORDOF(LEFT), 
+                        SELF.wi := 2, 
+                        SELF:= LEFT), LOCAL);
+aligned := Tensor.R4.AlignTensorPair(X_dat+y1);
+xAl := aligned(wi=1);
+yAl := PROJECT(aligned(wi=2), TRANSFORM(RECORDOF(LEFT),
+                        SELF.wi := 1,
+                        SELF := LEFT), LOCAL);
+OUTPUT(xAl, NAMED('aligned_x'));
+OUTPUT(yAl, NAMED('aligned_y'));
+
+//Fitting real data
+discriminator2 := GNNI.Fit(discriminator1, xAl, yAl, batchSize, 1);
+
+//Project generated data to get 0 in first shape component
+generated_dat := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
+    SELF.shape := [0] + LEFT.shape[2..],
+    SELF := LEFT
+    ));
+OUTPUT(generated_dat, NAMED('transformed_generated_tensor'));
+
+//Fitting generated data
+discriminator3 := GNNI.Fit(discriminator2, generated_dat, fake, batchSize, 1);
 
 //Noise for generator to make fakes
 random_data2 := makeRandom(2);
@@ -253,7 +256,7 @@ train_noise2 := Tensor.R4.MakeTensor([0,latentDim], random_data2);
 OUTPUT(train_noise1, NAMED('noisetensor_tofit'));
 
 //Get discriminator weights, add 20 to it, change discriminator weights of combined model, set combined weights
-updateddisWts := GNNI.GetWeights(discriminator2);
+updateddisWts := GNNI.GetWeights(discriminator3);
 OUTPUT(updateddisWts, NAMED('fit_diswts'));
 newdisWts := PROJECT(updateddisWts, TRANSFORM(t_Tensor,
                     SELF.wi := LEFT.wi + gen_wts_id,
