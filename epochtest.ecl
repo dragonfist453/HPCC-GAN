@@ -6,11 +6,11 @@ IMPORT GNN.GNNI;
 IMPORT GNN.Internal AS Int;
 IMPORT Std.System.Thorlib;
 IMPORT Std.System.Log AS Syslog;
+IMPORT Std.Str;
 IMPORT STD;
 IMPORT IMG.IMG;
 IMPORT GNN.Utils;
 nNodes := Thorlib.nodes();
-nodeId := Thorlib.node();
 t_Tensor := Tensor.R4.t_Tensor;
 TensData := Tensor.R4.TensData;
 FuncLayerDef := Types.FuncLayerDef;
@@ -39,10 +39,10 @@ outputRows := 5;
 outputCols := 5;
 
 //Despray variables
-serv := 'server=http://172.16.2.240:8010 ';
+serv := 'server=http://192.168.86.149:8010 ';
 over := 'overwrite=1 ';
 action  := 'action=despray ';
-dstip   := 'dstip=172.16.2.240 ';
+dstip   := 'dstip=192.168.86.149 ';
 dstfile := 'dstfile=/var/lib/HPCCSystems/mydropzone/*.png ';
 srcname := 'srcname=~gan::output_image ';
 splitprefix := 'splitprefix=filename,filesize ';
@@ -119,10 +119,9 @@ compiledef_discriminator := '''compile(loss='binary_crossentropy',
 discriminator := GNNI.DefineModel(session, ldef_discriminator, compiledef_discriminator); //Discriminator model definition
 OUTPUT(discriminator, NAMED('discriminator_id'));
 
-
 //COMBINED functional model
 //Combined model definition information
-ldef_combined := ['''layers.Input(shape=(100,))''', 
+combined_ldef := ['''layers.Input(shape=(100,))''', 
                 '''layers.Dense(256, input_dim=100)''',//1
                 '''layers.LeakyReLU(alpha=0.2)''',    //3
                 '''layers.BatchNormalization(momentum=0.8)''',//6
@@ -140,6 +139,17 @@ ldef_combined := ['''layers.Input(shape=(100,))''',
                 '''layers.Dense(256,trainable=False)''',//4
                 '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//5
                 '''layers.Dense(1,activation='sigmoid',trainable=False)'''];//6
+                
+//Convert SET of strings to dataset to iterate over and make trainable false
+dis_temp := DATASET(ldef_discriminator[2..], {STRING layer});
+
+//Project this with a transform to remove suffix bracket and add non-trainable feature
+dis_notrain := PROJECT(dis_temp, TRANSFORM(RECORDOF(LEFT),
+                                    SELF.layer := Str.RemoveSuffix(LEFT.layer, ')') + ', trainable=False)'
+                                ));
+
+//Get combined layers definition
+ldef_combined := ldef_generator + SET(dis_notrain, layer);
 
 compiledef_combined := '''compile(loss=tf.keras.losses.binary_crossentropy, optimizer=tf.keras.optimizers.Adam(0.0002, 0.5))''';
 
