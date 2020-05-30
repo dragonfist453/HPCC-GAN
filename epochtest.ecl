@@ -32,7 +32,7 @@ imgCols := 28;
 imgChannels := 1;
 imgSize := imgRows * imgCols;
 latentDim := 100;
-batchSize := 100;
+batchSize := 103;
 numEpochs := 100;
 epochNum := 1;
 outputRows := 5;
@@ -133,7 +133,7 @@ ldef_combined := ['''layers.Input(shape=(100,))''',
                 '''layers.LeakyReLU(alpha=0.2)''',  //15
                 '''layers.BatchNormalization(momentum=0.8)''',  //18
                 '''layers.Dense(784,activation='tanh')''',  //19
-                '''layers.Reshape((1,28,28,1))''', //20
+                '''layers.Reshape((28,28,1))''', //20
                 '''layers.Flatten(input_shape=(28,28,1), trainable=False)''',//1
                 '''layers.Dense(512,trainable=False)''',//2
                 '''layers.LeakyReLU(alpha=0.2, trainable=False)''',//3
@@ -224,20 +224,8 @@ OUTPUT(gen_X_dat1, NAMED('generated_tensor'));
 //Setting discriminator weights
 discriminator1 := GNNI.SetWeights(loopDiscriminator, disWts); 
 
-//Aligning tensors
-y1 := PROJECT(valid, TRANSFORM(RECORDOF(LEFT), 
-                        SELF.wi := 2, 
-                        SELF:= LEFT), LOCAL);
-aligned := Tensor.R4.AlignTensorPair(X_dat+y1);
-xAl := aligned(wi=1);
-yAl := PROJECT(aligned(wi=2), TRANSFORM(RECORDOF(LEFT),
-                        SELF.wi := 1,
-                        SELF := LEFT), LOCAL);
-OUTPUT(xAl, NAMED('aligned_x'));
-OUTPUT(yAl, NAMED('aligned_y'));
-
 //Fitting real data
-discriminator2 := GNNI.Fit(discriminator1, xAl, yAl, batchSize, 1);
+discriminator2 := GNNI.Fit(discriminator1, X_dat, valid, batchSize, 1);
 
 //Project generated data to get 0 in first shape component
 generated_dat := PROJECT(gen_X_dat1, TRANSFORM(t_Tensor,
